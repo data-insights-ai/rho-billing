@@ -1,0 +1,15 @@
+name: rho-billing-dev
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: billing
+      POSTGRES_PASSWORD: billing-local-only
+      POSTGRES_DB: billing
+    ports:
+      - "127.0.0.1:55438:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U billing -d billing"]
+      interval: 2s
+      timeout: 2s
+      retries: 30

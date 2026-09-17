@@ -1,0 +1,16 @@
+name: check
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  unit:
+    # No database. Database-backed tests skip themselves, so this runs the
+    # suite's unit half plus vet, the external consumer modules and the fuzz
+    # targets. The integration half runs in integration.yml.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: sh scripts/check.sh
