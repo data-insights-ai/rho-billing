@@ -99,6 +99,13 @@ func (s *Service) Entitlements(ctx context.Context, account billing.AccountID, s
 
 	holdings, err := s.deps.Entitlements.Holdings(ctx, account)
 	if err != nil {
+		if errors.Is(err, billing.ErrNotFound) {
+			// No billing account yet: the host has never sold this account
+			// anything. That is the same answer as an account with no
+			// holdings, not a failure, and a host that treated it as one
+			// would fall back to a cache for a customer who never had one.
+			return out, nil
+		}
 		return Entitlements{}, err
 	}
 

@@ -43,6 +43,16 @@ func TestEntitlementsReadModel(t *testing.T) {
 	subs := subscription.New(store.Subscriptions())
 	svc := query.New(query.Deps{Subscriptions: subs, Catalog: store, Entitlements: entitlements}, clock)
 
+	// An account the store has never heard of is not an error either: nothing
+	// was ever sold to it, so it holds nothing.
+	unknown, err := svc.Entitlements(ctx, billing.AccountID("ent-query-unknown"), "org-unknown")
+	if err != nil {
+		t.Fatalf("unknown account returned an error: %v", err)
+	}
+	if unknown.Subscribed || unknown.Active || len(unknown.PlanVersions) != 0 {
+		t.Fatalf("unknown account resolved to %+v", unknown)
+	}
+
 	// An account that never subscribed and holds nothing is not an error.
 	before, err := svc.Entitlements(ctx, account, "org-acme")
 	if err != nil {

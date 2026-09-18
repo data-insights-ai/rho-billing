@@ -4,6 +4,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html);
 pre-1.0, the exported API may change between minor versions.
 
+## [0.3.1] - 2026-09-18
+
+### Fixed
+
+- `query.Entitlements` returned `ErrNotFound` for an account the store had
+  never seen. An account nothing was ever sold to holds nothing; it is not a
+  lookup failure, and a host that treated it as one fell back to a cache for a
+  customer who never had one.
+
 ## [0.3.0] - 2026-09-17
 
 Same code as 0.2.0, republished from a squashed history. 0.1.0 and 0.2.0 are

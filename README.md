@@ -6,7 +6,7 @@ Money collection stays in a payment provider. This repository contains no
 payment-provider SDK.
 
 Module: `github.com/data-insights-ai/rho-billing`. License: Apache 2.0. Go 1.26.
-Release: `v0.3.0`.
+Release: `v0.3.1`.
 
 The host owns authentication, membership, HTTP, workers and secrets.
 A sibling adapter (`rho-paddle`) talks to Paddle. Constructors do no I/O
@@ -15,7 +15,7 @@ and start no workers.
 ## Install
 
 ```
-require github.com/data-insights-ai/rho-billing v0.3.0
+require github.com/data-insights-ai/rho-billing v0.3.1
 ```
 
 ## What you get
@@ -88,4 +88,4 @@ Exported types and tests are the contract. Beyond that:
 
 ## Status
 
-`v0.3.0`. Pre-1.0: the exported API may change between minor versions.
+`v0.3.1`. Pre-1.0: the exported API may change between minor versions.
