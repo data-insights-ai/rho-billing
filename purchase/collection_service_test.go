@@ -170,3 +170,89 @@ func TestCollectionBindingCancellationReturnsZero(t *testing.T) {
 		t.Fatalf("out=%+v err=%v", out, err)
 	}
 }
+
+// A provider may re-issue its line ids when it recomputes a transaction while
+// the lines themselves stay what was bound. Re-keying accepts exactly that and
+// nothing else: the same content under new ids, never a changed purchase.
+func TestRekeyCollectionLinesAcceptsNewIDsForSameContent(t *testing.T) {
+	now := billing.CanonicalTime(time.Date(2026, 9, 18, 10, 0, 0, 0, time.UTC))
+	scope := billing.Scope{Provider: "test", Merchant: "merchant", Environment: "sandbox"}
+	repo := NewMemoryRepository(ReferenceAccount{Account: "rekey"})
+	service := New(repo, func() time.Time { return now })
+	quote, intent := collectionFixture(t, service, "rekey", "rekey", now, scope)
+	lines := []CollectionLine{
+		{ProviderLineID: "provider-a", ProviderPriceID: "provider-price", Quantity: 2, Allocations: []CollectionAllocation{{QuoteLineID: quote.Lines[0].ID, Quantity: 2}}},
+		{ProviderLineID: "provider-b", ProviderPriceID: "provider-price", Quantity: 3, Allocations: []CollectionAllocation{{QuoteLineID: quote.Lines[1].ID, Quantity: 3}}},
+	}
+	bound, err := service.BindCollection(t.Context(), CollectionInput{
+		Account: "rekey", Scope: scope, TransactionID: "rekey-transaction", IntentID: intent.ID,
+		QuoteFingerprint: quote.Fingerprint(), CustomerID: "customer", Lines: lines,
+		Actor: "owner", Reason: "verified-checkout", EvidenceReference: "evidence",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rekey := func(lines []CollectionLine) (CollectionBinding, error) {
+		return service.RekeyCollectionLines(t.Context(), RekeyInput{Account: "rekey", Scope: scope, TransactionID: "rekey-transaction", Lines: lines, Actor: "worker", Reason: "provider re-issued line ids"})
+	}
+
+	// Same ids: a no-op that returns the stored binding.
+	same, err := rekey(lines)
+	if err != nil || same.Fingerprint() != bound.Fingerprint() {
+		t.Fatalf("replay with current ids: %+v, %v", same, err)
+	}
+
+	// New ids for the same content, in a different order: accepted, and what
+	// is stored afterwards carries the new ids and nothing else changed.
+	renamed := []CollectionLine{
+		{ProviderLineID: "provider-b2", ProviderPriceID: "provider-price", Quantity: 3, Allocations: []CollectionAllocation{{QuoteLineID: quote.Lines[1].ID, Quantity: 3}}},
+		{ProviderLineID: "provider-a2", ProviderPriceID: "provider-price", Quantity: 2, Allocations: []CollectionAllocation{{QuoteLineID: quote.Lines[0].ID, Quantity: 2}}},
+	}
+	rekeyed, err := rekey(renamed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored, err := service.CollectionBinding(t.Context(), "rekey", scope, "rekey-transaction")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.Fingerprint() != rekeyed.Fingerprint() || len(stored.Lines) != 2 || stored.Lines[0].ProviderLineID != "provider-a2" || stored.Lines[1].ProviderLineID != "provider-b2" {
+		t.Fatalf("stored after rekey = %+v", stored.Lines)
+	}
+	if stored.IntentID != bound.IntentID || stored.QuoteFingerprint != bound.QuoteFingerprint || stored.CustomerID != bound.CustomerID || !stored.CreatedAt.Equal(bound.CreatedAt) {
+		t.Fatalf("rekey changed more than the line ids: %+v", stored.CollectionInput)
+	}
+
+	// Anything commercial that differs is a different purchase.
+	for name, bad := range map[string][]CollectionLine{
+		"quantity": {
+			{ProviderLineID: "x1", ProviderPriceID: "provider-price", Quantity: 1, Allocations: []CollectionAllocation{{QuoteLineID: quote.Lines[0].ID, Quantity: 2}}},
+			{ProviderLineID: "x2", ProviderPriceID: "provider-price", Quantity: 3, Allocations: []CollectionAllocation{{QuoteLineID: quote.Lines[1].ID, Quantity: 3}}},
+		},
+		"price": {
+			{ProviderLineID: "x1", ProviderPriceID: "other-price", Quantity: 2, Allocations: []CollectionAllocation{{QuoteLineID: quote.Lines[0].ID, Quantity: 2}}},
+			{ProviderLineID: "x2", ProviderPriceID: "provider-price", Quantity: 3, Allocations: []CollectionAllocation{{QuoteLineID: quote.Lines[1].ID, Quantity: 3}}},
+		},
+		"allocation": {
+			{ProviderLineID: "x1", ProviderPriceID: "provider-price", Quantity: 2, Allocations: []CollectionAllocation{{QuoteLineID: quote.Lines[1].ID, Quantity: 2}}},
+			{ProviderLineID: "x2", ProviderPriceID: "provider-price", Quantity: 3, Allocations: []CollectionAllocation{{QuoteLineID: quote.Lines[0].ID, Quantity: 3}}},
+		},
+		"fewer lines": {
+			{ProviderLineID: "x1", ProviderPriceID: "provider-price", Quantity: 2, Allocations: []CollectionAllocation{{QuoteLineID: quote.Lines[0].ID, Quantity: 2}}},
+		},
+	} {
+		if _, err := rekey(bad); !errors.Is(err, billing.ErrConflict) {
+			t.Errorf("%s changed: got %v, want ErrConflict", name, err)
+		}
+	}
+	if _, err := rekey([]CollectionLine{{ProviderLineID: "dup", ProviderPriceID: "provider-price", Quantity: 2}, {ProviderLineID: "dup", ProviderPriceID: "provider-price", Quantity: 3}}); !errors.Is(err, billing.ErrInvalid) {
+		t.Errorf("duplicate ids: got %v, want ErrInvalid", err)
+	}
+	if _, err := service.RekeyCollectionLines(t.Context(), RekeyInput{Account: "rekey", Scope: scope, TransactionID: "unknown-transaction", Lines: renamed, Actor: "worker", Reason: "r"}); !errors.Is(err, billing.ErrNotFound) {
+		t.Errorf("unknown transaction: got %v, want ErrNotFound", err)
+	}
+	after, err := service.CollectionBinding(t.Context(), "rekey", scope, "rekey-transaction")
+	if err != nil || after.Fingerprint() != rekeyed.Fingerprint() {
+		t.Fatalf("rejected rekeys must leave the binding untouched: %+v, %v", after, err)
+	}
+}

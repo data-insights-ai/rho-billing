@@ -39,6 +39,49 @@ type CollectionBinding struct {
 type CollectionTx interface {
 	CollectionBinding(context.Context, billing.Scope, string) (CollectionBinding, error)
 	InsertCollectionBinding(context.Context, CollectionBinding) error
+	// ReplaceCollectionBinding overwrites the stored binding for the same
+	// scope and transaction. It exists for one purpose, re-keying provider
+	// line ids (RekeyCollectionLines); the commercial content is checked by
+	// the service, not here.
+	ReplaceCollectionBinding(context.Context, CollectionBinding) error
+}
+
+// RekeyInput names the provider's current line ids for a bound transaction.
+type RekeyInput struct {
+	Account       billing.AccountID
+	Scope         billing.Scope
+	TransactionID string
+	Lines         []CollectionLine
+	Actor, Reason string
+}
+
+func (in RekeyInput) Validate() error {
+	if !billing.ValidID(string(in.Account)) || !in.Scope.Valid() || !billing.ValidID(in.TransactionID) || in.Actor == "" || in.Reason == "" {
+		return billing.ErrInvalid
+	}
+	if len(in.Lines) == 0 || len(in.Lines) > maxLines {
+		return billing.ErrInvalid
+	}
+	seen := make(map[string]struct{}, len(in.Lines))
+	for _, line := range in.Lines {
+		if !billing.ValidID(line.ProviderLineID) || !billing.ValidID(line.ProviderPriceID) || line.Quantity <= 0 {
+			return billing.ErrInvalid
+		}
+		if _, dup := seen[line.ProviderLineID]; dup {
+			return billing.ErrInvalid
+		}
+		seen[line.ProviderLineID] = struct{}{}
+	}
+	return nil
+}
+
+// lineContent is what identifies a collection line commercially: which
+// price, how many, and which quote lines it pays for. The provider's own line
+// id is deliberately not part of it.
+func lineContent(line CollectionLine) string {
+	line.ProviderLineID = ""
+	line.Allocations = collectionLines([]CollectionLine{line})[0].Allocations
+	return digest(line)
 }
 
 func (in CollectionInput) Validate() error {

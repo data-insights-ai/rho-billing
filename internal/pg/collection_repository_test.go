@@ -228,3 +228,51 @@ func TestPostgresCollectionBindingLegacyPaidTransactionFence(t *testing.T) {
 func providerScope(providerName, merchant, environment string) billing.Scope {
 	return billing.Scope{Provider: providerName, Merchant: merchant, Environment: environment}
 }
+
+// Re-keying replaces the provider line ids in place: the row keeps its
+// intent, quote fingerprint and creation time, the stored fingerprint follows
+// the new content, and a stale fingerprint (someone else re-keyed first) is a
+// conflict rather than a silent overwrite.
+func TestPostgresRekeyCollectionLinesReplacesIDsInPlace(t *testing.T) {
+	store, db := testStore(t)
+	ctx := t.Context()
+	account := billing.AccountID("collection-rekey")
+	if err := store.CreateAccount(ctx, account, string(account)); err != nil {
+		t.Fatal(err)
+	}
+	scope := billing.Scope{Provider: "test", Merchant: "merchant", Environment: "sandbox"}
+	intent := mergedCollectionIntent(t, store, account, "rekey", scope)
+	service := purchase.New(store.Purchases(), testTime)
+	input := mergedCollectionInput(intent, "rekey", "rekey-transaction")
+	bound, err := service.BindCollection(ctx, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	renamed := []purchase.CollectionLine{{ProviderLineID: "provider-line-rekey-2", ProviderPriceID: "provider-price", Quantity: 5, Allocations: []purchase.CollectionAllocation{
+		{QuoteLineID: "merged-line-a-rekey", Quantity: 2},
+		{QuoteLineID: "merged-line-b-rekey", Quantity: 3},
+	}}}
+	rekeyed, err := service.RekeyCollectionLines(ctx, purchase.RekeyInput{Account: account, Scope: scope, TransactionID: "rekey-transaction", Lines: renamed, Actor: "worker", Reason: "provider re-issued line ids"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored, err := service.CollectionBinding(ctx, account, scope, "rekey-transaction")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.Lines[0].ProviderLineID != "provider-line-rekey-2" || stored.Fingerprint() != rekeyed.Fingerprint() || !stored.CreatedAt.Equal(bound.CreatedAt) || stored.IntentID != bound.IntentID {
+		t.Fatalf("stored after rekey = %+v", stored)
+	}
+	var rows int
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM billing_purchase_collection_bindings WHERE account_id=$1 AND transaction_id=$2`, account, "rekey-transaction").Scan(&rows); err != nil || rows != 1 {
+		t.Fatalf("rows=%d err=%v; a rekey must update the row, not add one", rows, err)
+	}
+	if _, err := service.RekeyCollectionLines(ctx, purchase.RekeyInput{Account: account, Scope: scope, TransactionID: "rekey-transaction", Lines: bound.Lines, Actor: "worker", Reason: "back"}); err != nil {
+		t.Fatalf("rekeying back to the original ids: %v", err)
+	}
+	changed := renamed
+	changed[0].Quantity = 4
+	if _, err := service.RekeyCollectionLines(ctx, purchase.RekeyInput{Account: account, Scope: scope, TransactionID: "rekey-transaction", Lines: changed, Actor: "worker", Reason: "x"}); !errors.Is(err, billing.ErrConflict) {
+		t.Fatalf("changed quantity: %v", err)
+	}
+}

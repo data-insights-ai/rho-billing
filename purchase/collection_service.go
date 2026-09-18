@@ -112,3 +112,73 @@ func collectionAllocationsMatchQuote(lines []CollectionLine, quoteLines []QuoteL
 	}
 	return matched == len(quoteLines) && len(quantities) == 0
 }
+
+// RekeyCollectionLines replaces the provider line ids of a bound transaction.
+//
+// Some providers re-issue line ids whenever they recompute a transaction (an
+// address arrives, tax is applied) while the lines themselves, price, quantity
+// and what they pay for, stay what the host bound. The paid transaction is then
+// the authoritative evidence for the ids that refunds and adjustments will
+// reference later. This accepts exactly that: the same multiset of line
+// contents under new ids. Any change to price, quantity or allocation is a
+// different purchase and is refused as a conflict. Replaying the current ids
+// is a no-op.
+func (s *Service) RekeyCollectionLines(ctx context.Context, in RekeyInput) (CollectionBinding, error) {
+	if s == nil || s.repo == nil || s.now == nil {
+		return CollectionBinding{}, billing.ErrInvalid
+	}
+	if err := ctx.Err(); err != nil {
+		return CollectionBinding{}, err
+	}
+	if err := in.Validate(); err != nil {
+		return CollectionBinding{}, err
+	}
+	var out CollectionBinding
+	err := s.repo.WithinAccount(ctx, in.Account, func(tx Tx) error {
+		old, err := tx.CollectionBinding(ctx, in.Scope, in.TransactionID)
+		if err != nil {
+			return err
+		}
+		if old.Validate() != nil || old.Account != in.Account {
+			return billing.ErrState
+		}
+		if !sameLineContents(old.Lines, in.Lines) {
+			return billing.ErrConflict
+		}
+		next := cloneCollectionBinding(old)
+		next.Lines = collectionLines(in.Lines)
+		if next.Fingerprint() == old.Fingerprint() {
+			out = next
+			return nil
+		}
+		if err := tx.ReplaceCollectionBinding(ctx, next); err != nil {
+			return err
+		}
+		out = next
+		return nil
+	})
+	if err != nil {
+		return CollectionBinding{}, err
+	}
+	return out, nil
+}
+
+// sameLineContents reports whether two line sets pay for the same things in
+// the same quantities, ignoring provider line ids.
+func sameLineContents(a, b []CollectionLine) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	counts := make(map[string]int, len(a))
+	for _, line := range a {
+		counts[lineContent(line)]++
+	}
+	for _, line := range b {
+		key := lineContent(line)
+		if counts[key] == 0 {
+			return false
+		}
+		counts[key]--
+	}
+	return true
+}

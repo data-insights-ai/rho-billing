@@ -72,4 +72,29 @@ func (t *memoryTx) InsertCollectionBinding(ctx context.Context, binding Collecti
 	return nil
 }
 
+func (t *memoryTx) ReplaceCollectionBinding(ctx context.Context, binding CollectionBinding) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := t.lifecycleReady(); err != nil {
+		return err
+	}
+	if err := binding.Validate(); err != nil {
+		return err
+	}
+	if binding.Account != t.account {
+		return billing.ErrConflict
+	}
+	key := lifecycleCollectionKey{scope: binding.Scope, transactionID: binding.TransactionID}
+	old, ok := t.lifecycle.collections[key]
+	if !ok {
+		return billing.ErrNotFound
+	}
+	if old.Account != binding.Account || old.IntentID != binding.IntentID || old.QuoteFingerprint != binding.QuoteFingerprint {
+		return billing.ErrConflict
+	}
+	t.lifecycle.collections[key] = cloneCollectionBinding(binding)
+	return nil
+}
+
 var _ CollectionTx = (*memoryTx)(nil)

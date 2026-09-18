@@ -4,6 +4,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html);
 pre-1.0, the exported API may change between minor versions.
 
+## [0.3.2] - 2026-09-18
+
+### Added
+
+- `purchase`: `Service.RekeyCollectionLines` and `CollectionTx.ReplaceCollectionBinding`.
+  A provider may re-issue its line ids when it recomputes a transaction while
+  the lines themselves, price, quantity and what they pay for, stay what the
+  host bound. Re-keying replaces the ids under exactly that condition; any
+  commercial change is refused as a conflict, and replaying the current ids is
+  a no-op. The paid transaction thereby becomes the reference that refunds and
+  adjustments resolve against.
+
 ## [0.3.1] - 2026-09-18
 
 ### Fixed

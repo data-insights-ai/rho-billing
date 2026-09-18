@@ -140,3 +140,42 @@ func (t *purchaseTx) InsertCollectionBinding(ctx context.Context, in purchase.Co
 	}
 	return nil
 }
+
+func (t *purchaseTx) ReplaceCollectionBinding(ctx context.Context, in purchase.CollectionBinding) error {
+	if err := t.session.scope(in.Account); err != nil {
+		return err
+	}
+	if err := in.Validate(); err != nil {
+		return err
+	}
+	old, err := t.CollectionBinding(ctx, in.Scope, in.TransactionID)
+	if err != nil {
+		return err
+	}
+	if old.Account != in.Account || old.IntentID != in.IntentID || old.QuoteFingerprint != in.QuoteFingerprint {
+		return billing.ErrConflict
+	}
+	raw, err := json.Marshal(in)
+	if err != nil {
+		return err
+	}
+	if len(raw) > collectionBindingJSONLimit {
+		return fmt.Errorf("purchase collection binding: %w", billing.ErrInvalid)
+	}
+	result, err := t.session.tx.ExecContext(ctx, `
+		UPDATE billing_purchase_collection_bindings
+		SET binding=$6, fingerprint=$7
+		WHERE account_id=$1 AND provider=$2 AND merchant=$3 AND environment=$4 AND transaction_id=$5 AND fingerprint=$8`,
+		string(in.Account), in.Scope.Provider, in.Scope.Merchant, in.Scope.Environment, in.TransactionID,
+		raw, in.Fingerprint(), old.Fingerprint(),
+	)
+	if err != nil {
+		return mapPurchaseLifecycleConflict(err)
+	}
+	if n, err := result.RowsAffected(); err != nil {
+		return err
+	} else if n != 1 {
+		return billing.ErrConflict
+	}
+	return nil
+}
