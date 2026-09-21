@@ -12,17 +12,34 @@ import (
 	billing "github.com/data-insights-ai/rho-billing"
 )
 
-func TestBaselineInstallIsASingleMigrationFile(t *testing.T) {
+// A fresh install is one squashed baseline plus whatever has been added
+// since. The baseline cannot be edited once it has been applied anywhere:
+// the runner verifies its checksum and would refuse the whole database, so
+// a change after a release is a new numbered file and never a line added
+// to 001_release.sql. This test holds that shape.
+func TestBaselineInstallStartsFromOneReleaseFile(t *testing.T) {
 	entries, err := fs.ReadDir(migrationFiles, "migrations")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(entries) != 1 || entries[0].Name() != "001_release.sql" {
-		names := make([]string, 0, len(entries))
-		for _, e := range entries {
-			names = append(names, e.Name())
+	if len(entries) == 0 || entries[0].Name() != "001_release.sql" {
+		t.Fatalf("the first migration must be 001_release.sql, got %v", entries)
+	}
+	numbered := regexp.MustCompile(`^(\d{3})_[a-z0-9_]+\.sql$`)
+	previous := 0
+	for _, e := range entries {
+		match := numbered.FindStringSubmatch(e.Name())
+		if match == nil {
+			t.Fatalf("migration %q is not named NNN_name.sql", e.Name())
 		}
-		t.Fatalf("install files = %q, want [001_release.sql]", names)
+		version := 0
+		for _, r := range match[1] {
+			version = version*10 + int(r-'0')
+		}
+		if version <= previous {
+			t.Fatalf("migration %q does not follow version %d", e.Name(), previous)
+		}
+		previous = version
 	}
 }
 

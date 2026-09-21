@@ -49,7 +49,7 @@ func (s *Service) Fulfill(ctx context.Context, account billing.AccountID, intent
 		if err := funding.Validate(); err != nil || funding.Account != account || funding.IntentID != intent.ID || funding.Scope != intent.Scope || funding.TransactionID != intent.TransactionID || funding.Currency != intent.Currency || !funding.PaidAt.Equal(intent.PaidAt) {
 			return billing.ErrState
 		}
-		if err := compareFactAllocation(PaymentFact{Gross: funding.Gross, Tax: funding.Tax, Lines: funding.Lines}, quote); err != nil {
+		if err := compareFactAllocation(PaymentFact{Gross: funding.Gross, Tax: funding.Tax, Discount: funding.Discount, Lines: funding.Lines}, quote); err != nil {
 			return billing.ErrState
 		}
 		complete, err := applyFulfillments(ctx, tx, intent, quote, funding, now)

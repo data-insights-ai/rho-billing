@@ -8,6 +8,7 @@ import (
 	"time"
 
 	billing "github.com/data-insights-ai/rho-billing"
+	"github.com/data-insights-ai/rho-billing/internal/checked"
 )
 
 func (s *Service) CreateIntent(ctx context.Context, in IntentInput) (Intent, error) {
@@ -328,7 +329,7 @@ func applyPaid(ctx context.Context, tx Tx, fact PaymentFact, intent Intent, resu
 		if fact.CollectedAt.Before(intent.CreatedAt) || !fact.CollectedAt.Before(intent.ExpiresAt) {
 			return recordPaymentRejection(ctx, tx, fact, result, RejectCollectionTime)
 		}
-		if err := tx.InsertFunding(ctx, Funding{Account: fact.Account, Scope: fact.Scope, TransactionID: fact.TransactionID, IntentID: intent.ID, Currency: fact.Currency, Gross: fact.Gross, Tax: fact.Tax, PaidAt: fact.CollectedAt, Lines: copyPaidLines(fact.Lines)}); err != nil {
+		if err := tx.InsertFunding(ctx, Funding{Account: fact.Account, Scope: fact.Scope, TransactionID: fact.TransactionID, IntentID: intent.ID, Currency: fact.Currency, Gross: fact.Gross, Tax: fact.Tax, Discount: fact.Discount, PaidAt: fact.CollectedAt, Lines: copyPaidLines(fact.Lines)}); err != nil {
 			return err
 		}
 	}
@@ -342,7 +343,7 @@ func applyPaid(ctx context.Context, tx Tx, fact PaymentFact, intent Intent, resu
 		return billing.ErrOverflow
 	}
 	intent.Revision++
-	complete, err := applyFulfillments(ctx, tx, intent, quote, Funding{Account: fact.Account, Scope: fact.Scope, TransactionID: fact.TransactionID, IntentID: intent.ID, Currency: fact.Currency, Gross: fact.Gross, Tax: fact.Tax, PaidAt: fact.CollectedAt, Lines: fact.Lines}, now)
+	complete, err := applyFulfillments(ctx, tx, intent, quote, Funding{Account: fact.Account, Scope: fact.Scope, TransactionID: fact.TransactionID, IntentID: intent.ID, Currency: fact.Currency, Gross: fact.Gross, Tax: fact.Tax, Discount: fact.Discount, PaidAt: fact.CollectedAt, Lines: fact.Lines}, now)
 	if err != nil {
 		return err
 	}
@@ -380,11 +381,20 @@ func compareFactAllocation(fact PaymentFact, q Quote) error {
 		if expected == nil {
 			return billing.ErrState
 		}
+		// The quote is what the customer was promised; Gross is what the
+		// provider actually collected. A provider-side discount is the one
+		// legitimate reason for the two to differ, and it must account for
+		// the difference exactly. Any other gap is the provider charging
+		// something we did not promise, which is what this check is for.
+		collected, err := checked.Add(line.Gross, line.Discount)
+		if err != nil {
+			return billing.ErrState
+		}
 		if q.TaxTreatment == TaxInclusive {
-			if line.Gross != expected.Amount {
+			if collected != expected.Amount {
 				return billing.ErrState
 			}
-		} else if line.Gross-line.Tax != expected.Amount {
+		} else if collected-line.Tax != expected.Amount {
 			return billing.ErrState
 		}
 	}

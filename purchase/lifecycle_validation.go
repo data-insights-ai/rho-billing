@@ -143,9 +143,9 @@ func (f PaymentFact) Validate() error {
 		if f.CollectedAt.IsZero() || f.CollectedAt.After(f.OccurredAt) {
 			return billing.ErrInvalid
 		}
-		return validatePaidLines(f.Lines, f.Gross, f.Tax)
+		return validatePaidLines(f.Lines, f.Gross, f.Tax, f.Discount)
 	case FactPending, FactActionRequired, FactFailed:
-		if f.Gross != 0 || f.Tax != 0 || len(f.Lines) != 0 || !f.CollectedAt.IsZero() {
+		if f.Gross != 0 || f.Tax != 0 || f.Discount != 0 || len(f.Lines) != 0 || !f.CollectedAt.IsZero() {
 			return billing.ErrInvalid
 		}
 	default:
@@ -155,14 +155,26 @@ func (f PaymentFact) Validate() error {
 }
 func (f PaymentFact) Paid() bool          { return f.Status == FactPaid || f.Status == FactCompleted }
 func (f PaymentFact) Fingerprint() string { return digest(normalizePaymentFact(f)) }
-func validatePaidLines(lines []PaidLine, gross, tax int64) error {
-	if gross <= 0 || tax < 0 || tax > gross || len(lines) < 1 || len(lines) > maxLines {
+
+// validatePaidLines checks a collection against itself: the lines must add
+// up to the totals, and every amount must be sane.
+//
+// Gross may be zero only when a discount explains it. A purchase that
+// collected nothing and was not discounted is not a purchase, and letting
+// one through would mean a free entitlement for anybody who can make the
+// provider send a zero-value transaction. Gross and discount are never
+// both zero, and the two together must be positive.
+func validatePaidLines(lines []PaidLine, gross, tax, discount int64) error {
+	if gross < 0 || tax < 0 || tax > gross || discount < 0 || len(lines) < 1 || len(lines) > maxLines {
+		return billing.ErrInvalid
+	}
+	if total, err := checked.Add(gross, discount); err != nil || total <= 0 {
 		return billing.ErrInvalid
 	}
 	seen := make(map[string]bool, len(lines))
-	var g, t int64
+	var g, t, d int64
 	for _, line := range lines {
-		if !billing.ValidID(line.LineID) || seen[line.LineID] || line.Gross < 0 || line.Tax < 0 || line.Tax > line.Gross {
+		if !billing.ValidID(line.LineID) || seen[line.LineID] || line.Gross < 0 || line.Tax < 0 || line.Tax > line.Gross || line.Discount < 0 {
 			return billing.ErrInvalid
 		}
 		seen[line.LineID] = true
@@ -175,8 +187,12 @@ func validatePaidLines(lines []PaidLine, gross, tax int64) error {
 		if err != nil {
 			return err
 		}
+		d, err = checked.Add(d, line.Discount)
+		if err != nil {
+			return err
+		}
 	}
-	if g != gross || t != tax {
+	if g != gross || t != tax || d != discount {
 		return billing.ErrInvalid
 	}
 	return nil
@@ -209,7 +225,7 @@ func (f Funding) Validate() error {
 	if _, err := json.Marshal(f); err != nil {
 		return billing.ErrInvalid
 	}
-	return validatePaidLines(f.Lines, f.Gross, f.Tax)
+	return validatePaidLines(f.Lines, f.Gross, f.Tax, f.Discount)
 }
 func (f Funding) Fingerprint() string { return digest(normalizeFunding(f)) }
 func clonePaymentFact(in PaymentFact) PaymentFact {

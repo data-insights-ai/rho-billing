@@ -262,7 +262,7 @@ func (t *purchaseTx) Funding(ctx context.Context, scope billing.Scope, transacti
 	var out purchase.Funding
 	var raw []byte
 	var fingerprint string
-	err := t.session.tx.QueryRowContext(ctx, `SELECT account_id,transaction_id,intent_id,currency,gross,tax,paid_at,lines,fingerprint FROM billing_purchase_funding WHERE account_id=$1 AND provider=$2 AND merchant=$3 AND environment=$4 AND transaction_id=$5`, string(t.session.account), scope.Provider, scope.Merchant, scope.Environment, transactionID).Scan(&out.Account, &out.TransactionID, &out.IntentID, &out.Currency, &out.Gross, &out.Tax, &out.PaidAt, &raw, &fingerprint)
+	err := t.session.tx.QueryRowContext(ctx, `SELECT account_id,transaction_id,intent_id,currency,gross,tax,discount,paid_at,lines,fingerprint FROM billing_purchase_funding WHERE account_id=$1 AND provider=$2 AND merchant=$3 AND environment=$4 AND transaction_id=$5`, string(t.session.account), scope.Provider, scope.Merchant, scope.Environment, transactionID).Scan(&out.Account, &out.TransactionID, &out.IntentID, &out.Currency, &out.Gross, &out.Tax, &out.Discount, &out.PaidAt, &raw, &fingerprint)
 	if errors.Is(err, sql.ErrNoRows) {
 		var owner string
 		foreignErr := t.session.tx.QueryRowContext(ctx, `SELECT account_id FROM billing_purchase_funding WHERE provider=$1 AND merchant=$2 AND environment=$3 AND transaction_id=$4`, scope.Provider, scope.Merchant, scope.Environment, transactionID).Scan(&owner)
@@ -318,7 +318,7 @@ func (t *purchaseTx) InsertFunding(ctx context.Context, in purchase.Funding) err
 	if len(raw) > purchaseJSONLimit {
 		return billing.ErrInvalid
 	}
-	_, err = t.session.tx.ExecContext(ctx, `INSERT INTO billing_purchase_funding(account_id,provider,merchant,environment,transaction_id,intent_id,currency,gross,tax,paid_at,lines,fingerprint) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT DO NOTHING`, string(in.Account), in.Scope.Provider, in.Scope.Merchant, in.Scope.Environment, in.TransactionID, in.IntentID, in.Currency, in.Gross, in.Tax, in.PaidAt, raw, in.Fingerprint())
+	_, err = t.session.tx.ExecContext(ctx, `INSERT INTO billing_purchase_funding(account_id,provider,merchant,environment,transaction_id,intent_id,currency,gross,tax,discount,paid_at,lines,fingerprint) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT DO NOTHING`, string(in.Account), in.Scope.Provider, in.Scope.Merchant, in.Scope.Environment, in.TransactionID, in.IntentID, in.Currency, in.Gross, in.Tax, in.Discount, in.PaidAt, raw, in.Fingerprint())
 	if err != nil {
 		return mapPurchaseLifecycleConflict(err)
 	}

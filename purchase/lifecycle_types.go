@@ -81,6 +81,16 @@ type CommandRecord struct {
 type PaidLine struct {
 	LineID     string
 	Gross, Tax int64
+	// Discount is what the provider took off this line: the difference
+	// between the quoted amount and what was actually collected. It exists
+	// because a provider-side discount code is a legitimate reason for the
+	// two to differ, and the only one. Recording it keeps the rule that
+	// every gap between quote and collection must be explained, rather
+	// than abandoning the rule to allow discounts.
+	//
+	// omitempty on purpose: a line without a discount serialises exactly as
+	// it did before this field existed, so stored fingerprints still match.
+	Discount int64 `json:",omitempty"`
 }
 
 // PaymentFact: Paid/completed are collection evidence; other statuses carry zero
@@ -92,9 +102,14 @@ type PaymentFact struct {
 	Status                           PaymentFactStatus
 	Currency                         string
 	Gross, Tax                       int64
-	Lines                            []PaidLine
-	OccurredAt, CollectedAt          time.Time
-	Payload                          []byte
+	// Discount is the sum of the lines' discounts: what the provider took
+	// off the quoted price. Gross is what was actually collected, so a
+	// fully discounted purchase has Gross 0 and Discount equal to the
+	// quote.
+	Discount                int64 `json:",omitempty"`
+	Lines                   []PaidLine
+	OccurredAt, CollectedAt time.Time
+	Payload                 []byte
 }
 type PaymentFactStatus string
 
@@ -136,8 +151,11 @@ type Funding struct {
 	Scope                             billing.Scope
 	TransactionID, IntentID, Currency string
 	Gross, Tax                        int64
-	PaidAt                            time.Time
-	Lines                             []PaidLine
+	// Discount is what the provider took off the quoted price. Gross is
+	// what was collected, so the two together are what was quoted.
+	Discount int64 `json:",omitempty"`
+	PaidAt   time.Time
+	Lines    []PaidLine
 }
 
 type LifecycleTx interface {
