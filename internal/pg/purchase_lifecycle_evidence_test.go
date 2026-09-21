@@ -77,13 +77,27 @@ func TestPostgresPurchaseLifecycleAllocatesAllLinesAndAppliesCreditEffect(t *tes
 		t.Fatal(err)
 	}
 	fact := purchase.PaymentFact{Account: intent.Account, Scope: intent.Scope, IntentID: intent.ID, TransactionID: "bundle-tx", EventID: "mismatch", Status: purchase.FactPaid, Currency: "USD", Gross: 1320, Tax: 220, CollectedAt: testTime(), OccurredAt: testTime(), Lines: []purchase.PaidLine{{LineID: "software", Gross: 1200, Tax: 201}, {LineID: "credits", Gross: 120, Tax: 19}}}
+	// A line split that does not match the quote is applied and reported,
+	// not refused: the provider is the authority on what it collected, and
+	// the customer must not lose a purchase to our bookkeeping.
 	bad, err := service.ApplyPayment(ctx, fact)
-	if err != nil || bad.Rejection != purchase.RejectAllocation {
+	if err != nil || !bad.Applied || bad.Discrepancy == "" {
 		t.Fatalf("bad allocation=%+v %v", bad, err)
 	}
-	fact.EventID = "paid"
-	fact.Lines[0].Tax = 200
-	fact.Lines[1].Tax = 20
+	// A later event for the same transaction reporting different amounts
+	// is still refused. That check is about this platform contradicting
+	// itself, not about disagreeing with the provider, and it is the one
+	// worth keeping: the transaction is already funded at one set of
+	// figures and cannot also be funded at another.
+	replay := fact
+	replay.EventID = "replay"
+	replay.Lines = []purchase.PaidLine{{LineID: "software", Gross: 1200, Tax: 200}, {LineID: "credits", Gross: 120, Tax: 20}}
+	conflicting, err := service.ApplyPayment(ctx, replay)
+	if err != nil || conflicting.Applied || conflicting.Rejection != purchase.RejectAllocation {
+		t.Fatalf("conflicting replay=%+v %v", conflicting, err)
+	}
+
+	// Repeating the event that was applied is harmless.
 	paid, err := service.ApplyPayment(ctx, fact)
 	if err != nil || !paid.Applied {
 		t.Fatalf("paid=%+v %v", paid, err)

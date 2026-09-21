@@ -95,7 +95,10 @@ func (s *Service) ApplyAdjustment(ctx context.Context, in AdjustmentInput) (Adju
 		if err != nil {
 			return err
 		}
-		if quote.Validate() != nil || quote.Account != in.Account || quote.ID != intent.QuoteID || quote.Fingerprint() != intent.QuoteFingerprint || compareFactAllocation(PaymentFact{Gross: funding.Gross, Tax: funding.Tax, Discount: funding.Discount, Lines: funding.Lines}, quote) != nil {
+		// The amounts are not required to match the quote here either: a
+		// refund of a payment we accepted must be processable, and the
+		// provider is the authority on what it collected and gave back.
+		if quote.Validate() != nil || quote.Account != in.Account || quote.ID != intent.QuoteID || quote.Fingerprint() != intent.QuoteFingerprint {
 			return billing.ErrState
 		}
 		state, err := tx.AdjustmentState(ctx, intent.ID)

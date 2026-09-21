@@ -49,9 +49,12 @@ func (s *Service) Fulfill(ctx context.Context, account billing.AccountID, intent
 		if err := funding.Validate(); err != nil || funding.Account != account || funding.IntentID != intent.ID || funding.Scope != intent.Scope || funding.TransactionID != intent.TransactionID || funding.Currency != intent.Currency || !funding.PaidAt.Equal(intent.PaidAt) {
 			return billing.ErrState
 		}
-		if err := compareFactAllocation(PaymentFact{Gross: funding.Gross, Tax: funding.Tax, Discount: funding.Discount, Lines: funding.Lines}, quote); err != nil {
-			return billing.ErrState
-		}
+		// Deliberately not gated on the amounts matching the quote. The
+		// customer has paid; refusing to give them what they bought
+		// because our catalog disagrees with the provider's punishes them
+		// for our bookkeeping. The disagreement is reported when the
+		// payment is applied.
+
 		complete, err := applyFulfillments(ctx, tx, intent, quote, funding, now)
 		if err != nil {
 			return err

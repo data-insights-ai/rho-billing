@@ -3,6 +3,7 @@ package purchase
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math"
 	"slices"
 	"time"
@@ -301,8 +302,22 @@ func applyPaid(ctx context.Context, tx Tx, fact PaymentFact, intent Intent, resu
 	if quote.Validate() != nil || quote.Account != intent.Account || quote.ID != intent.QuoteID || quote.Fingerprint() != intent.QuoteFingerprint {
 		return billing.ErrState
 	}
-	if err := compareFactAllocation(fact, quote); err != nil {
-		return recordPaymentRejection(ctx, tx, fact, result, RejectAllocation)
+	// The provider is the authority on money. It owns the price, the tax,
+	// the discount and the collection, and the customer agreed to its
+	// figures on its checkout, not ours. What the customer bought is known
+	// from the intent, not from the amount, so a difference between our
+	// quote and the provider's total changes nothing about what they are
+	// owed.
+	//
+	// This used to refuse the payment outright. It never caught a real
+	// problem and it did cause one: a legitimate purchase was rejected
+	// because our quote said one number and the provider, correctly,
+	// collected another. A disagreement is worth knowing about, because it
+	// means our catalog has drifted from theirs and we are showing prices
+	// we do not charge. It is not worth taking a paid customer's purchase
+	// away for, so it is reported and the payment is applied.
+	if mismatch := describeAllocationMismatch(fact, quote); mismatch != "" {
+		result.Discrepancy = mismatch
 	}
 	if old, err := tx.Funding(ctx, fact.Scope, fact.TransactionID); err == nil {
 		if old.Validate() != nil || old.Account != fact.Account || old.Scope != fact.Scope || old.TransactionID != fact.TransactionID {
@@ -359,6 +374,27 @@ func applyPaid(ctx context.Context, tx Tx, fact PaymentFact, intent Intent, resu
 	result.Applied = true
 	result.TransactionID = fact.TransactionID
 	return tx.InsertPaymentEvent(ctx, PaymentRecord{Fact: clonePaymentFact(fact), Result: *result})
+}
+
+// describeAllocationMismatch says how a collection differs from the quote
+// it was made against, or "" when it does not. It is an observation about
+// our own catalog, never a reason to refuse money.
+func describeAllocationMismatch(fact PaymentFact, q Quote) string {
+	if err := compareFactAllocation(fact, q); err == nil {
+		return ""
+	}
+	var quoted int64
+	for _, line := range q.Lines {
+		quoted += line.Amount
+	}
+	// The net figure is the one that is comparable with the quote, which
+	// is stated before tax and before any discount.
+	collected := fact.Gross + fact.Discount
+	if q.TaxTreatment != TaxInclusive {
+		collected -= fact.Tax
+	}
+	return fmt.Sprintf("the provider settled %d %s net (collected %d, discounted %d, tax %d) against a quote of %d: our catalog and the provider's disagree",
+		collected, q.Currency, fact.Gross, fact.Discount, fact.Tax, quoted)
 }
 
 func compareFactAllocation(fact PaymentFact, q Quote) error {

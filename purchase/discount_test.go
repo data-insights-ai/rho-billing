@@ -56,10 +56,13 @@ func TestDiscountedPaymentIsFundedAndFulfilled(t *testing.T) {
 	}
 }
 
-// The rule that every gap between quote and collection must be explained
-// is the reason this check exists at all, so relaxing it for discounts
-// must not relax it for anything else.
-func TestUnexplainedShortfallIsStillRefused(t *testing.T) {
+// The provider owns the money: the price, the tax, the discount and the
+// collection are all its, and the customer agreed to its figures on its
+// checkout. What they bought is known from the intent, not from the
+// amount. So a total that disagrees with our quote is applied and
+// reported, never refused: refusing takes a paid customer's purchase away
+// over our own bookkeeping, which is what happened in production.
+func TestATotalThatDisagreesWithTheQuoteIsAppliedAndReported(t *testing.T) {
 	cases := []struct {
 		name            string
 		gross, discount int64
@@ -67,7 +70,6 @@ func TestUnexplainedShortfallIsStillRefused(t *testing.T) {
 		{name: "collected less than quoted, no discount", gross: 60, discount: 0},
 		{name: "discount does not cover the gap", gross: 20, discount: 30},
 		{name: "collected and discounted more than quoted", gross: 100, discount: 50},
-		{name: "nothing collected and nothing discounted", gross: 0, discount: 0},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -80,17 +82,59 @@ func TestUnexplainedShortfallIsStillRefused(t *testing.T) {
 				OccurredAt: now.Add(time.Minute), CollectedAt: now.Add(time.Minute),
 			}
 			result, err := s.ApplyPayment(t.Context(), fact)
-			if err == nil && result.Applied {
-				t.Fatalf("a %s was accepted", c.name)
+			if err != nil || !result.Applied {
+				t.Fatalf("a %s was refused: %+v %v", c.name, result, err)
 			}
-			paid, intentErr := s.Intent(t.Context(), "acct", intent.ID)
-			if intentErr != nil {
-				t.Fatal(intentErr)
+			// The customer gets what they bought.
+			paid, err := s.Intent(t.Context(), "acct", intent.ID)
+			if err != nil {
+				t.Fatal(err)
 			}
-			if paid.Payment == PaymentPaid || paid.Fulfillment == FulfillmentComplete {
-				t.Fatalf("a refused payment still funded the intent: %+v", paid)
+			if paid.Payment != PaymentPaid || paid.Fulfillment != FulfillmentComplete {
+				t.Fatalf("the purchase was not completed: %+v", paid)
+			}
+			// And somebody is told our catalog has drifted.
+			if result.Discrepancy == "" {
+				t.Fatal("a disagreement with the quote was not reported")
 			}
 		})
+	}
+}
+
+// Nothing collected and nothing discounted is not a purchase. It is the
+// one case still refused, because admitting it would hand a free
+// entitlement to anybody who can make a provider send a zero transaction.
+func TestAPaymentOfNothingIsStillRefused(t *testing.T) {
+	s, now, scope, quote, intent := lifecycleFixture(t)
+	fact := PaymentFact{
+		Account: "acct", Scope: scope, EventID: "event", TransactionID: "transaction",
+		IntentID: intent.ID, Status: FactPaid, Currency: quote.Currency,
+		Lines:      []PaidLine{{LineID: "line"}},
+		OccurredAt: now.Add(time.Minute), CollectedAt: now.Add(time.Minute),
+	}
+	result, err := s.ApplyPayment(t.Context(), fact)
+	if err == nil && result.Applied {
+		t.Fatal("a payment of nothing was accepted")
+	}
+}
+
+// A payment that agrees with the quote reports nothing, so the
+// discrepancy means something when it does appear.
+func TestAnAgreeingPaymentReportsNoDiscrepancy(t *testing.T) {
+	s, now, scope, quote, intent := lifecycleFixture(t)
+	fact := PaymentFact{
+		Account: "acct", Scope: scope, EventID: "event", TransactionID: "transaction",
+		IntentID: intent.ID, Status: FactPaid, Currency: quote.Currency,
+		Gross:      quote.Amount,
+		Lines:      []PaidLine{{LineID: "line", Gross: quote.Amount}},
+		OccurredAt: now.Add(time.Minute), CollectedAt: now.Add(time.Minute),
+	}
+	result, err := s.ApplyPayment(t.Context(), fact)
+	if err != nil || !result.Applied {
+		t.Fatalf("result %+v err %v", result, err)
+	}
+	if result.Discrepancy != "" {
+		t.Fatalf("an agreeing payment reported %q", result.Discrepancy)
 	}
 }
 
