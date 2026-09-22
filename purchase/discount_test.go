@@ -159,3 +159,68 @@ func TestDiscountTotalsMustMatchTheLines(t *testing.T) {
 		t.Fatalf("fixture changed: quote %d", quote.Amount)
 	}
 }
+
+// The intent expires with the quote, thirty minutes, and that window is
+// how long the price we showed stands. It is not how long the customer
+// has to finish paying. A card sent to a 3-D Secure challenge while its
+// owner looks for their phone, or a bank redirect, settles later than
+// that, and refusing it means the provider took the money and we gave
+// them nothing.
+func TestAPaymentThatSettlesAfterTheQuoteExpiresIsStillApplied(t *testing.T) {
+	s, now, scope, quote, _ := lifecycleFixture(t)
+
+	// An intent whose quote window closes almost at once, so the payment
+	// below settles after it, the way a 3-D Secure challenge or a bank
+	// redirect does in life.
+	intent, err := s.CreateIntent(t.Context(), IntentInput{
+		Account: "acct", ID: "short", Operation: "short", QuoteID: quote.ID,
+		QuoteFingerprint: quote.Fingerprint(), Scope: scope, Actor: "actor",
+		Reason: "purchase", ExpiresAt: now.Add(time.Second),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	settled := now.Add(time.Minute)
+	if !settled.After(intent.ExpiresAt) {
+		t.Fatalf("the fixture no longer settles after the intent expires")
+	}
+
+	fact := PaymentFact{
+		Account: "acct", Scope: scope, EventID: "event", TransactionID: "transaction",
+		IntentID: intent.ID, Status: FactPaid, Currency: quote.Currency,
+		Gross:       quote.Amount,
+		Lines:       []PaidLine{{LineID: "line", Gross: quote.Amount}},
+		OccurredAt:  settled,
+		CollectedAt: settled,
+	}
+	result, err := s.ApplyPayment(t.Context(), fact)
+	if err != nil || !result.Applied {
+		t.Fatalf("a settlement after the quote expired was refused: %+v %v", result, err)
+	}
+	paid, err := s.Intent(t.Context(), "acct", intent.ID)
+	if err != nil || paid.Payment != PaymentPaid || paid.Fulfillment != FulfillmentComplete {
+		t.Fatalf("intent = %+v, err = %v", paid, err)
+	}
+}
+
+// A collection that predates the intent is not a late payment, it is a
+// payment for something else, and is still refused.
+func TestAPaymentCollectedBeforeTheIntentIsRefused(t *testing.T) {
+	s, now, scope, quote, intent := lifecycleFixture(t)
+	early := intent.CreatedAt.Add(-time.Hour)
+	fact := PaymentFact{
+		Account: "acct", Scope: scope, EventID: "event", TransactionID: "transaction",
+		IntentID: intent.ID, Status: FactPaid, Currency: quote.Currency,
+		Gross:       quote.Amount,
+		Lines:       []PaidLine{{LineID: "line", Gross: quote.Amount}},
+		OccurredAt:  now.Add(time.Minute),
+		CollectedAt: early,
+	}
+	result, err := s.ApplyPayment(t.Context(), fact)
+	if err == nil && result.Applied {
+		t.Fatal("a collection predating the intent was accepted")
+	}
+	if result.Rejection != RejectCollectionTime {
+		t.Fatalf("rejection = %q, want %q", result.Rejection, RejectCollectionTime)
+	}
+}

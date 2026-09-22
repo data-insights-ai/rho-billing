@@ -329,7 +329,23 @@ func applyPaid(ctx context.Context, tx Tx, fact PaymentFact, intent Intent, resu
 	} else if intent.Payment == PaymentPaid {
 		return recordPaymentRejection(ctx, tx, fact, result, RejectAlreadyFunded)
 	} else {
-		if fact.CollectedAt.Before(intent.CreatedAt) || !fact.CollectedAt.Before(intent.ExpiresAt) {
+		// A collection cannot predate the intent it funds: that is not a
+		// late payment, it is a payment for something else.
+		//
+		// There is deliberately no upper bound. The intent expires with
+		// the quote, thirty minutes, and that window is how long the price
+		// we showed stands — not how long the customer has to finish
+		// paying. A card that goes to a 3-D Secure challenge while its
+		// owner looks for their phone, or a bank redirect, routinely
+		// settles later than that, and refusing it means the provider
+		// took the money and we gave them nothing. That is the failure
+		// this system has already had twice, from other causes.
+		//
+		// What the window was guarding is covered elsewhere: the
+		// transaction is bound to this intent by the provider, the intent
+		// can only be funded once, and a payment that arrives for an
+		// already-funded intent is refused above.
+		if fact.CollectedAt.Before(intent.CreatedAt) {
 			return recordPaymentRejection(ctx, tx, fact, result, RejectCollectionTime)
 		}
 		if err := tx.InsertFunding(ctx, Funding{Account: fact.Account, Scope: fact.Scope, TransactionID: fact.TransactionID, IntentID: intent.ID, Currency: fact.Currency, Gross: fact.Gross, Tax: fact.Tax, Discount: fact.Discount, PaidAt: fact.CollectedAt, Lines: copyPaidLines(fact.Lines)}); err != nil {

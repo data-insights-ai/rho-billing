@@ -54,7 +54,13 @@ func (in Intent) Validate() error {
 		return billing.ErrInvalid
 	}
 	if in.Payment == PaymentPaid {
-		if !billing.ValidID(in.TransactionID) || in.PaidAt.Before(in.CreatedAt) || !in.PaidAt.Before(in.ExpiresAt) || in.LastPaymentAt.IsZero() || in.LastPaymentAt.Before(in.PaidAt) || !billing.ValidID(in.LastPaymentEventID) {
+		// PaidAt is not required to fall before ExpiresAt. The intent
+		// expires with the quote, and that window is how long the price
+		// stands, not how long the customer has to finish paying: a card
+		// sent to a 3-D Secure challenge, or a bank redirect, settles
+		// later than that often enough. It may not predate the intent,
+		// because that would be a payment for something else.
+		if !billing.ValidID(in.TransactionID) || in.PaidAt.Before(in.CreatedAt) || in.LastPaymentAt.IsZero() || in.LastPaymentAt.Before(in.PaidAt) || !billing.ValidID(in.LastPaymentEventID) {
 			return billing.ErrInvalid
 		}
 	} else if in.TransactionID != "" || !in.PaidAt.IsZero() || in.Fulfillment != FulfillmentPending {
