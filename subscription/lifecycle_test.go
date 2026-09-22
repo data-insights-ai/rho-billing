@@ -276,3 +276,84 @@ func TestLifecycleRejectsHalfSetCoverage(t *testing.T) {
 		}
 	}
 }
+
+// A subscription that changes plan must carry the new plan's billing
+// period, not the one it was activated with. Activation refuses a
+// subscription that already exists, so the provider's confirmation is the
+// only place the new period can enter the model; before it did, an
+// organization that moved from a monthly plan to a yearly one kept a
+// month-long window for ever. The window is what a change scheduled for
+// "next period" lands on, so a stale one puts it in the past.
+func TestConfirmAdoptsTheProvidersBillingPeriod(t *testing.T) {
+	svc := New(NewMemoryRepository())
+	start := time.Date(2026, 9, 19, 7, 0, 0, 0, time.UTC)
+	monthEnd := start.AddDate(0, 1, 0)
+	ref := billing.Reference{Scope: billing.Scope{Provider: "sim", Merchant: "m", Environment: "sandbox"}, ID: "sub-term"}
+	if _, err := svc.Activate(t.Context(), ActivateInput{
+		Account: "acct-term", ID: "life-term", Operation: "activate-term", Quantity: 1,
+		Items:    []Item{lifecycleItem("pro", 1, start, monthEnd)},
+		Policies: Policies{Access: AccessImmediate, Collection: CollectionAutomatic, Proration: ProrationNextPeriod, Allowance: AllowanceKeepPeriod},
+		Coverage: billing.Period{Start: start, End: monthEnd}, At: start, Ref: ref,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// The same day, the organization moves to a yearly plan.
+	upgraded := start.Add(12 * time.Hour)
+	yearEnd := upgraded.AddDate(1, 0, 0)
+	confirmed, err := svc.Confirm(t.Context(), "acct-term", "life-term", Snapshot{
+		Account: "acct-term", Ref: ref, Status: "active", SourceTime: upgraded,
+		Items: []Item{lifecycleItem("enterprise", 1, upgraded, yearEnd)},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(confirmed.Items) != 1 || confirmed.Items[0].ID != "enterprise" {
+		t.Fatalf("items = %+v, want the plan the subscription now holds", confirmed.Items)
+	}
+	if !confirmed.Items[0].Period.End.Equal(yearEnd) {
+		t.Fatalf("item period ends %v, want %v", confirmed.Items[0].Period.End, yearEnd)
+	}
+	if !confirmed.Coverage.End.Equal(yearEnd) {
+		t.Fatalf("coverage ends %v, want %v: a change scheduled for the next period would land in the past", confirmed.Coverage.End, yearEnd)
+	}
+	if err := confirmed.Validate(); err != nil {
+		t.Fatalf("confirmed lifecycle invalid: %v", err)
+	}
+}
+
+// A snapshot with no items says nothing about the term and must not
+// replace a window we do know with nothing. One with items is already
+// required by Validate to carry a period on each, so there is no third
+// case to test.
+func TestConfirmKeepsThePeriodWhenTheSnapshotHasNoItems(t *testing.T) {
+	svc := New(NewMemoryRepository())
+	start := time.Date(2026, 9, 19, 7, 0, 0, 0, time.UTC)
+	end := start.AddDate(0, 1, 0)
+	ref := billing.Reference{Scope: billing.Scope{Provider: "sim", Merchant: "m", Environment: "sandbox"}, ID: "sub-bare"}
+	if _, err := svc.Activate(t.Context(), ActivateInput{
+		Account: "acct-bare", ID: "life-bare", Operation: "activate-bare", Quantity: 1,
+		Items:    []Item{lifecycleItem("pro", 1, start, end)},
+		Policies: Policies{Access: AccessImmediate, Collection: CollectionAutomatic, Proration: ProrationImmediate, Allowance: AllowanceKeepPeriod},
+		Coverage: billing.Period{Start: start, End: end}, At: start, Ref: ref,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	confirmed, err := svc.Confirm(t.Context(), "acct-bare", "life-bare", Snapshot{
+		Account: "acct-bare", Ref: ref, Status: "active", SourceTime: start.Add(time.Hour),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !confirmed.Coverage.End.Equal(end) || len(confirmed.Items) != 1 || !confirmed.Items[0].Period.End.Equal(end) {
+		t.Fatalf("a snapshot with no items replaced a known term: coverage %v items %+v", confirmed.Coverage, confirmed.Items)
+	}
+
+	// And an item without a period never reaches Confirm at all.
+	if err := Validate(Snapshot{
+		Account: "acct-bare", Ref: ref, Status: "active",
+		Items: []Item{{ID: "pro", PlanVersion: "plan-1", Quantity: 1}},
+	}); !errors.Is(err, billing.ErrInvalid) {
+		t.Fatalf("an item without a period was accepted: %v", err)
+	}
+}

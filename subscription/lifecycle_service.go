@@ -375,6 +375,26 @@ func (s *Service) Confirm(ctx context.Context, account billing.AccountID, id str
 		life.Ref = snapshot.Ref
 		life.ConfirmedQuantity = confirmedQuantity(snapshot)
 		life.UpdatedAt = fence
+		// The provider's snapshot carries the billing period of the plan
+		// the subscription holds now. Adopting it keeps the items and the
+		// coverage in step with a plan change.
+		//
+		// Without this both keep the window of the first purchase for
+		// ever: an organization that started on a monthly plan and moved
+		// to a yearly one reads as though its year ends in four weeks,
+		// and a change scheduled for "next period" lands on a date that
+		// passed months ago. Activation is the only other writer, and it
+		// refuses a subscription that already exists.
+		//
+		// Validate has already required a usable period on every item, so
+		// there is nothing to guard against here: either the provider sent
+		// items or it sent none. The provider reports one billing period
+		// for the subscription and every item carries it, so the first is
+		// the term.
+		if len(snapshot.Items) > 0 {
+			life.Items = slices.Clone(snapshot.Items)
+			life.Coverage = snapshot.Items[0].Period
+		}
 		if life.ConfirmedQuantity == life.DesiredQuantity {
 			life.Change = ScheduledChange{}
 			life.PendingOperation = ""
