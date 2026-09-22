@@ -62,7 +62,7 @@ func TestDiscountedPaymentIsFundedAndFulfilled(t *testing.T) {
 // amount. So a total that disagrees with our quote is applied and
 // reported, never refused: refusing takes a paid customer's purchase away
 // over our own bookkeeping, which is what happened in production.
-func TestATotalThatDisagreesWithTheQuoteIsAppliedAndReported(t *testing.T) {
+func TestATotalThatDisagreesWithTheQuoteIsApplied(t *testing.T) {
 	cases := []struct {
 		name            string
 		gross, discount int64
@@ -93,18 +93,16 @@ func TestATotalThatDisagreesWithTheQuoteIsAppliedAndReported(t *testing.T) {
 			if paid.Payment != PaymentPaid || paid.Fulfillment != FulfillmentComplete {
 				t.Fatalf("the purchase was not completed: %+v", paid)
 			}
-			// And somebody is told our catalog has drifted.
-			if result.Discrepancy == "" {
-				t.Fatal("a disagreement with the quote was not reported")
-			}
+
 		})
 	}
 }
 
-// Nothing collected and nothing discounted is not a purchase. It is the
-// one case still refused, because admitting it would hand a free
-// entitlement to anybody who can make a provider send a zero transaction.
-func TestAPaymentOfNothingIsStillRefused(t *testing.T) {
+// A purchase that cost the customer nothing is still a purchase. A full
+// discount and a credit that covers the whole price both settle at zero,
+// and the provider decides that. Refusing one takes away a subscription
+// the provider has already started.
+func TestAPaymentOfNothingIsApplied(t *testing.T) {
 	s, now, scope, quote, intent := lifecycleFixture(t)
 	fact := PaymentFact{
 		Account: "acct", Scope: scope, EventID: "event", TransactionID: "transaction",
@@ -113,14 +111,18 @@ func TestAPaymentOfNothingIsStillRefused(t *testing.T) {
 		OccurredAt: now.Add(time.Minute), CollectedAt: now.Add(time.Minute),
 	}
 	result, err := s.ApplyPayment(t.Context(), fact)
-	if err == nil && result.Applied {
-		t.Fatal("a payment of nothing was accepted")
+	if err != nil || !result.Applied {
+		t.Fatalf("a settled purchase of nothing was refused: %+v %v", result, err)
+	}
+	paid, err := s.Intent(t.Context(), "acct", intent.ID)
+	if err != nil || paid.Payment != PaymentPaid || paid.Fulfillment != FulfillmentComplete {
+		t.Fatalf("intent = %+v, err = %v", paid, err)
 	}
 }
 
-// A payment that agrees with the quote reports nothing, so the
-// discrepancy means something when it does appear.
-func TestAnAgreeingPaymentReportsNoDiscrepancy(t *testing.T) {
+// A payment that agrees with the quote is applied like any other; the
+// quote decides what the money buys, not whether it is accepted.
+func TestAnAgreeingPaymentIsApplied(t *testing.T) {
 	s, now, scope, quote, intent := lifecycleFixture(t)
 	fact := PaymentFact{
 		Account: "acct", Scope: scope, EventID: "event", TransactionID: "transaction",
@@ -132,9 +134,6 @@ func TestAnAgreeingPaymentReportsNoDiscrepancy(t *testing.T) {
 	result, err := s.ApplyPayment(t.Context(), fact)
 	if err != nil || !result.Applied {
 		t.Fatalf("result %+v err %v", result, err)
-	}
-	if result.Discrepancy != "" {
-		t.Fatalf("an agreeing payment reported %q", result.Discrepancy)
 	}
 }
 

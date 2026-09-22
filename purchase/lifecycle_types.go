@@ -128,13 +128,6 @@ type PaymentResult struct {
 	IntentID, EventID, TransactionID string
 	Applied                          bool
 	Rejection                        string
-	// Discrepancy says the provider's figures differ from the quote they
-	// were made against. The payment is still applied: the provider is the
-	// authority on money, and what the customer bought is known from the
-	// intent rather than from the amount. It means our catalog has drifted
-	// from theirs, which somebody should look at and no customer should
-	// suffer for.
-	Discrepancy string `json:",omitempty"`
 }
 
 const (

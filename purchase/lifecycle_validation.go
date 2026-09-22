@@ -157,18 +157,14 @@ func (f PaymentFact) Paid() bool          { return f.Status == FactPaid || f.Sta
 func (f PaymentFact) Fingerprint() string { return digest(normalizePaymentFact(f)) }
 
 // validatePaidLines checks a collection against itself: the lines must add
-// up to the totals, and every amount must be sane.
+// up to the totals, and no amount may be negative.
 //
-// Gross may be zero only when a discount explains it. A purchase that
-// collected nothing and was not discounted is not a purchase, and letting
-// one through would mean a free entitlement for anybody who can make the
-// provider send a zero-value transaction. Gross and discount are never
-// both zero, and the two together must be positive.
+// It says nothing about whether the totals are the ones we expected. The
+// provider decides what was collected, including collecting nothing when
+// a discount or a credit covers the whole price, and a purchase is not
+// invalid for costing the customer nothing.
 func validatePaidLines(lines []PaidLine, gross, tax, discount int64) error {
 	if gross < 0 || tax < 0 || tax > gross || discount < 0 || len(lines) < 1 || len(lines) > maxLines {
-		return billing.ErrInvalid
-	}
-	if total, err := checked.Add(gross, discount); err != nil || total <= 0 {
 		return billing.ErrInvalid
 	}
 	seen := make(map[string]bool, len(lines))

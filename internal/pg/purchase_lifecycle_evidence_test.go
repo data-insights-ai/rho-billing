@@ -77,11 +77,11 @@ func TestPostgresPurchaseLifecycleAllocatesAllLinesAndAppliesCreditEffect(t *tes
 		t.Fatal(err)
 	}
 	fact := purchase.PaymentFact{Account: intent.Account, Scope: intent.Scope, IntentID: intent.ID, TransactionID: "bundle-tx", EventID: "mismatch", Status: purchase.FactPaid, Currency: "USD", Gross: 1320, Tax: 220, CollectedAt: testTime(), OccurredAt: testTime(), Lines: []purchase.PaidLine{{LineID: "software", Gross: 1200, Tax: 201}, {LineID: "credits", Gross: 120, Tax: 19}}}
-	// A line split that does not match the quote is applied and reported,
-	// not refused: the provider is the authority on what it collected, and
-	// the customer must not lose a purchase to our bookkeeping.
+	// A line split that does not match the quote is applied: the provider
+	// is the authority on what it collected, and the customer must not
+	// lose a purchase to our bookkeeping.
 	bad, err := service.ApplyPayment(ctx, fact)
-	if err != nil || !bad.Applied || bad.Discrepancy == "" {
+	if err != nil || !bad.Applied {
 		t.Fatalf("bad allocation=%+v %v", bad, err)
 	}
 	// A later event for the same transaction reporting different amounts

@@ -3,13 +3,11 @@ package purchase
 import (
 	"context"
 	"errors"
-	"fmt"
 	"math"
 	"slices"
 	"time"
 
 	billing "github.com/data-insights-ai/rho-billing"
-	"github.com/data-insights-ai/rho-billing/internal/checked"
 )
 
 func (s *Service) CreateIntent(ctx context.Context, in IntentInput) (Intent, error) {
@@ -302,23 +300,13 @@ func applyPaid(ctx context.Context, tx Tx, fact PaymentFact, intent Intent, resu
 	if quote.Validate() != nil || quote.Account != intent.Account || quote.ID != intent.QuoteID || quote.Fingerprint() != intent.QuoteFingerprint {
 		return billing.ErrState
 	}
-	// The provider is the authority on money. It owns the price, the tax,
-	// the discount and the collection, and the customer agreed to its
-	// figures on its checkout, not ours. What the customer bought is known
-	// from the intent, not from the amount, so a difference between our
-	// quote and the provider's total changes nothing about what they are
-	// owed.
+	// The provider's figures are taken as given. It owns the price, the
+	// tax, the discount and the collection, and the customer agreed to
+	// them on its checkout. What they bought is known from the intent, so
+	// there is nothing here to recompute and nothing to compare against.
 	//
-	// This used to refuse the payment outright. It never caught a real
-	// problem and it did cause one: a legitimate purchase was rejected
-	// because our quote said one number and the provider, correctly,
-	// collected another. A disagreement is worth knowing about, because it
-	// means our catalog has drifted from theirs and we are showing prices
-	// we do not charge. It is not worth taking a paid customer's purchase
-	// away for, so it is reported and the payment is applied.
-	if mismatch := describeAllocationMismatch(fact, quote); mismatch != "" {
-		result.Discrepancy = mismatch
-	}
+	// The quote is still read above, because it decides what the money
+	// buys; it is not a second opinion on the amount.
 	if old, err := tx.Funding(ctx, fact.Scope, fact.TransactionID); err == nil {
 		if old.Validate() != nil || old.Account != fact.Account || old.Scope != fact.Scope || old.TransactionID != fact.TransactionID {
 			return billing.ErrState
@@ -374,67 +362,6 @@ func applyPaid(ctx context.Context, tx Tx, fact PaymentFact, intent Intent, resu
 	result.Applied = true
 	result.TransactionID = fact.TransactionID
 	return tx.InsertPaymentEvent(ctx, PaymentRecord{Fact: clonePaymentFact(fact), Result: *result})
-}
-
-// describeAllocationMismatch says how a collection differs from the quote
-// it was made against, or "" when it does not. It is an observation about
-// our own catalog, never a reason to refuse money.
-func describeAllocationMismatch(fact PaymentFact, q Quote) string {
-	if err := compareFactAllocation(fact, q); err == nil {
-		return ""
-	}
-	var quoted int64
-	for _, line := range q.Lines {
-		quoted += line.Amount
-	}
-	// The net figure is the one that is comparable with the quote, which
-	// is stated before tax and before any discount.
-	collected := fact.Gross + fact.Discount
-	if q.TaxTreatment != TaxInclusive {
-		collected -= fact.Tax
-	}
-	return fmt.Sprintf("the provider settled %d %s net (collected %d, discounted %d, tax %d) against a quote of %d: our catalog and the provider's disagree",
-		collected, q.Currency, fact.Gross, fact.Discount, fact.Tax, quoted)
-}
-
-func compareFactAllocation(fact PaymentFact, q Quote) error {
-	if len(fact.Lines) != len(q.Lines) {
-		return billing.ErrState
-	}
-	seen := make(map[string]struct{}, len(fact.Lines))
-	for _, line := range fact.Lines {
-		if _, ok := seen[line.LineID]; ok {
-			return billing.ErrState
-		}
-		seen[line.LineID] = struct{}{}
-		var expected *QuoteLine
-		for i := range q.Lines {
-			if q.Lines[i].ID == line.LineID {
-				expected = &q.Lines[i]
-				break
-			}
-		}
-		if expected == nil {
-			return billing.ErrState
-		}
-		// The quote is what the customer was promised; Gross is what the
-		// provider actually collected. A provider-side discount is the one
-		// legitimate reason for the two to differ, and it must account for
-		// the difference exactly. Any other gap is the provider charging
-		// something we did not promise, which is what this check is for.
-		collected, err := checked.Add(line.Gross, line.Discount)
-		if err != nil {
-			return billing.ErrState
-		}
-		if q.TaxTreatment == TaxInclusive {
-			if collected != expected.Amount {
-				return billing.ErrState
-			}
-		} else if collected-line.Tax != expected.Amount {
-			return billing.ErrState
-		}
-	}
-	return nil
 }
 
 func copyPaidLines(in []PaidLine) []PaidLine { return slices.Clone(in) }
