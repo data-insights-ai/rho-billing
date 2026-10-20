@@ -4,6 +4,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html);
 pre-1.0, the exported API may change between minor versions.
 
+## [0.5.0] - 2026-10-20
+
+### Added
+
+- `subscription`: a provider's subscription in neutral terms. `Apply`
+  keeps the newest snapshot by revision (provider time, then event id), so
+  late, repeated and out-of-order events change nothing; `AccessOf` maps a
+  status to full, grace or no access.
+- `provider`: the interface a payment-provider plugin offers: checkout,
+  customer portal, catalog, one-time charges, and decoded events
+  (subscription changed, payment completed).
+
 ## [0.4.1] - 2026-10-20
 
 ### Added

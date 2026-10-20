@@ -10,7 +10,8 @@ No dependencies beyond the standard library.
 |---|---|
 | Prepaid credit: lots spent soonest-expiring first, reservations (hold, settle with overage, cancel), expiry and revocation | `credit` |
 | Exact usage rating: fixed, weighted, included quota, graduated tiers, rounded once | `rating` |
-| A payment-provider abstraction (subscriptions, checkout, events; providers as plugins) | planned |
+| Subscriptions in provider-neutral terms: newest snapshot wins whatever the event order; status to access | `subscription` |
+| The interface a payment-provider plugin offers (checkout, customer portal, catalog, charges, decoded events); Paddle: `rho-paddle` | `provider` |
 
 ## Credits
 
@@ -37,3 +38,13 @@ metric quantities with exact rational arithmetic and one rounding step.
 Up to v0.3 this module also stored billing state itself (Postgres schema,
 outbox, purchases, subscriptions). From v0.4 it holds no state; hosts on
 v0.3 keep working on that version until they move.
+
+## Subscriptions
+
+```go
+current, changed, err := subscription.Apply(stored, event.Subscription) // nil when unseen
+if changed {
+	store(current)                             // with the host's own consequences
+	access := subscription.AccessOf(current.Status)
+}
+```

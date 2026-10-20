@@ -14,7 +14,7 @@ Contributor notes for the storage-free billing library.
 | Host | Pinned | Notes |
 |---|---|---|
 | account-platform | v0.4+ | the central wallet of Data Insights products |
-| rho-paddle | v0.3.7 | uses the removed storage-backed API; stays pinned until it is rebuilt on the provider abstraction (account platform stage 6) |
+| rho-paddle | v0.5+ | the Paddle plugin of `provider` |
 | sigma-scg-platform | v0.3.7 | uses the removed catalog, subscription, purchase and Postgres API; stays pinned until migrated |
 
 A behaviour change is finished when it is tagged and the hosts that need it
