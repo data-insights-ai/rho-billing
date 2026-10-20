@@ -4,6 +4,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html);
 pre-1.0, the exported API may change between minor versions.
 
+## [0.4.0] - 2026-10-20
+
+### Changed
+
+- The library is storage-free. `credit` is rebuilt as pure functions over
+  lots the host loads: soonest-expiring-first spending, all-or-nothing
+  reservations, settlement with usage beyond the hold (overage reported as
+  uncovered), cancel, expiry and revocation, journal changes as counter
+  deltas. A reservation without scope no longer spends scoped credit.
+- Rating moves from `usage` to `rating`, unchanged.
+
+### Removed
+
+- Postgres storage, migrations, outbox and inbox, `catalog`, `subscription`,
+  `purchase`, `usage` settlement, `query`, `integration`, allowances, spend
+  limits and `billingtest`. Hosts that use them stay on v0.3.7.
+
 ## [0.3.2] - 2026-09-18
 
 ### Added

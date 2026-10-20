@@ -1,36 +1,21 @@
 # rho-billing
 
-Contributor notes for the provider-independent billing core.
+Contributor notes for the storage-free billing library.
 
-Read `README.md`, `CONTRIBUTING.md`, `docs/ARCHITECTURE.md` and
-`docs/PROVIDER_CAPABILITIES.md` before changing behaviour.
+- Go module: `github.com/data-insights-ai/rho-billing`; standard library only.
+- No storage, schema, transactions, goroutines or network calls: the host
+  loads, the library decides, the host stores.
+- No payment-provider SDK in this module; providers come as plugins.
+- Never put credentials or customer data in source, commits or fixtures.
+- Tests and exported APIs are the contract: `make check`.
 
-- Go module: `github.com/data-insights-ai/rho-billing`.
-- No payment-provider SDK in this module.
-- Constructors do no I/O and start no workers.
-- Hosts authorize before calling the library.
-- Never put credentials, customer payloads, or secret-bearing logs in source,
-  commits, documentation, or fixtures.
-- Tests and exported APIs are the contract. `sh scripts/check-local.sh` is
-  the local gate.
-- Do not import `internal/` from a host.
+## Hosts
 
-## Releasing, and what it does to the hosts
+| Host | Pinned | Notes |
+|---|---|---|
+| account-platform | v0.4+ | the central wallet of Data Insights products |
+| rho-paddle | v0.3.7 | uses the removed storage-backed API; stays pinned until it is rebuilt on the provider abstraction (account platform stage 6) |
+| sigma-scg-platform | v0.3.7 | uses the removed catalog, subscription, purchase and Postgres API; stays pinned until migrated |
 
-`rho-paddle` and `sigma-scg-platform` each keep a gitignored `go.work` that
-substitutes this checkout. Their local test runs therefore see whatever is
-in this working tree, while their CI and production see the version their
-`go.mod` pins. A change here is invisible to them until it is tagged and
-they bump.
-
-So a behaviour change here is not finished when it is merged:
-
-1. Tag and push a version.
-2. In each host that depends on the new behaviour:
-   `GOWORK=off go get github.com/data-insights-ai/rho-billing@vX.Y.Z`,
-   and in `rho-paddle` also `(cd testdata/host && GOWORK=off go mod tidy)`.
-3. Let that host's CI run. Its gate sets `GOWORK=off`, so it is the first
-   thing that actually exercises the released pair.
-
-Skipping step 2 does not fail loudly. The host's tests fail as if they
-were wrong, which sends you reading the test rather than the pin.
+A behaviour change is finished when it is tagged and the hosts that need it
+have bumped and passed their checks.
