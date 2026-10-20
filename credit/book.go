@@ -43,6 +43,16 @@ func (b *Book) Changed() []Lot {
 	return out
 }
 
+// Lots are all lots as they are now, soonest-expiring first.
+func (b *Book) Lots() []Lot {
+	out := make([]Lot, 0, len(b.lots))
+	for _, l := range b.lots {
+		out = append(out, *l)
+	}
+	slices.SortFunc(out, func(x, y Lot) int { return soonerFirst(x, y) })
+	return out
+}
+
 // Lot returns a lot as it is now.
 func (b *Book) Lot(id string) (Lot, bool) {
 	l, ok := b.lots[id]

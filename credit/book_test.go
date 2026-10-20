@@ -62,6 +62,9 @@ func TestScopedCreditStaysInItsScope(t *testing.T) {
 	if got := b.Available("crm", t0); got != 10 {
 		t.Errorf("another scope: %d", got)
 	}
+	if lots := b.Lots(); len(lots) != 2 || lots[0].ID != "any" {
+		t.Errorf("lots: %+v", lots)
+	}
 }
 
 func TestAReservationHoldsAllOrNothing(t *testing.T) {

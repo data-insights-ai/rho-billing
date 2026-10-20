@@ -4,6 +4,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html);
 pre-1.0, the exported API may change between minor versions.
 
+## [0.4.1] - 2026-10-20
+
+### Added
+
+- `credit.Book.Lots`: every lot as it is now.
+
 ## [0.4.0] - 2026-10-20
 
 ### Changed
