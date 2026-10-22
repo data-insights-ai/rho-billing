@@ -4,6 +4,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html);
 pre-1.0, the exported API may change between minor versions.
 
+## [0.6.0] - 2026-10-22
+
+### Added
+
+- `provider.Provider.CreateCustomer` (`CustomerRequest`): a host creates
+  the provider's customer for an account before its first checkout, so
+  the checkout and every payment are bound to it.
+- `provider.Provider.GetTransaction` (`Transaction`): a host reads a
+  transaction it did not start (a renewal-recovery link) to see which
+  customer and subscription it belongs to.
+
 ## [0.5.0] - 2026-10-20
 
 ### Added

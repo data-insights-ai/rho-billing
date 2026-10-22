@@ -29,6 +29,29 @@ type Provider interface {
 	// Charge bills a one-time amount on a subscription's next invoice,
 	// for example usage beyond prepaid credit; the key makes it idempotent.
 	Charge(ctx context.Context, r ChargeRequest) error
+	// CreateCustomer creates the provider's customer for a host account,
+	// so checkouts and payments are bound to it from the start.
+	CreateCustomer(ctx context.Context, r CustomerRequest) (string, error)
+	// GetTransaction reads a transaction the host did not start itself,
+	// such as the provider's link to retry a failed renewal.
+	GetTransaction(ctx context.Context, id string) (Transaction, error)
+}
+
+type CustomerRequest struct {
+	Email string
+	Name  string
+	// Reference is the host's key for the account, kept as custom data.
+	Reference string
+}
+
+// Transaction is what the provider knows of one transaction.
+type Transaction struct {
+	ID       string
+	Status   string
+	Customer string
+	// Subscription is set for a subscription's transactions.
+	Subscription string
+	Reference    string
 }
 
 type CheckoutRequest struct {
