@@ -41,6 +41,9 @@ type Provider interface {
 	ReplaceItems(ctx context.Context, r ReplaceRequest) error
 	// CancelAtPeriodEnd ends a subscription when its current period ends.
 	CancelAtPeriodEnd(ctx context.Context, subscription string) error
+	// SetNextBilling moves a subscription's next renewal to at, without
+	// billing the change: the current period ends then.
+	SetNextBilling(ctx context.Context, subscription string, at time.Time) error
 }
 
 // CustomItem is a price the host sets for one deal instead of one of the
@@ -56,6 +59,9 @@ type CustomItem struct {
 	Interval  string
 	Frequency int
 	Quantity  int
+	// TrialDays delays a recurring item's first charge, for example until
+	// a contract starts; one-time items are charged at once.
+	TrialDays int
 	// Reference is the host's key for the item, kept as custom data.
 	Reference string
 }
@@ -170,10 +176,12 @@ var ErrInvalidItem = errors.New("provider: a custom item needs a name, a positiv
 // Validate checks a custom item before it is sent.
 func (c CustomItem) Validate() error {
 	switch {
-	case c.Name == "" || c.Amount <= 0 || len(c.Currency) != 3 || c.Quantity < 1:
+	case c.Name == "" || c.Amount <= 0 || len(c.Currency) != 3 || c.Quantity < 1 || c.TrialDays < 0:
 		return ErrInvalidItem
-	case c.Interval == "" && c.Frequency == 0:
+	case c.Interval == "" && c.Frequency == 0 && c.TrialDays == 0:
 		return nil
+	case c.Interval == "" && c.Frequency == 0:
+		return ErrInvalidItem
 	case c.Frequency < 1:
 		return ErrInvalidItem
 	}

@@ -4,6 +4,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html);
 pre-1.0, the exported API may change between minor versions.
 
+## [0.8.0] - 2026-10-23
+
+### Added
+
+- `provider.CustomItem.TrialDays`: a recurring custom item's first charge
+  waits that many days (a contract that starts later); one-time items are
+  still charged at once.
+- `provider.Provider.SetNextBilling`: move a subscription's next renewal
+  without billing the change (anchor a subscription to a contract's start or
+  a contract year's boundary).
+
 ## [0.7.0] - 2026-10-23
 
 ### Added
