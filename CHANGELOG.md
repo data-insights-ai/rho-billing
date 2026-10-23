@@ -4,6 +4,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html);
 pre-1.0, the exported API may change between minor versions.
 
+## [0.7.0] - 2026-10-23
+
+### Added
+
+- `provider.CheckoutRequest.Custom` (`CustomItem`): prices the host sets
+  for one checkout instead of catalog prices, recurring or one-time
+  (contracts with negotiated amounts, price tiers kept in the host's
+  catalog). `CustomItem.Validate` checks one before it is sent.
+- `provider.Provider.ReplaceItems` (`ReplaceRequest`): new custom items on
+  a subscription from its next renewal, without billing the change (a
+  contract's price for its next year).
+- `provider.Provider.CancelAtPeriodEnd`: end a subscription when its
+  current period ends (a contract's last year).
+
 ## [0.6.0] - 2026-10-22
 
 ### Added

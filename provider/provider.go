@@ -35,6 +35,34 @@ type Provider interface {
 	// GetTransaction reads a transaction the host did not start itself,
 	// such as the provider's link to retry a failed renewal.
 	GetTransaction(ctx context.Context, id string) (Transaction, error)
+	// ReplaceItems puts other items on a subscription from its next
+	// renewal on, without billing the change now: a contract's price for
+	// its next contract year.
+	ReplaceItems(ctx context.Context, r ReplaceRequest) error
+	// CancelAtPeriodEnd ends a subscription when its current period ends.
+	CancelAtPeriodEnd(ctx context.Context, subscription string) error
+}
+
+// CustomItem is a price the host sets for one deal instead of one of the
+// provider's catalog prices: a recurring amount when Interval is set,
+// else a one-time amount billed with the first payment.
+type CustomItem struct {
+	Name        string
+	Description string
+	// Amount is per unit, in the currency's minor unit, net of tax.
+	Amount   int64
+	Currency string
+	// Interval is empty for a one-time item, else day, week, month or year.
+	Interval  string
+	Frequency int
+	Quantity  int
+	// Reference is the host's key for the item, kept as custom data.
+	Reference string
+}
+
+type ReplaceRequest struct {
+	Subscription string
+	Items        []CustomItem
 }
 
 type CustomerRequest struct {
@@ -59,6 +87,8 @@ type CheckoutRequest struct {
 	Customer string
 	Email    string
 	Items    []subscription.Item
+	// Custom items are priced by the host for this checkout alone.
+	Custom []CustomItem
 	// Reference comes back on the resulting subscription and payment.
 	Reference  string
 	SuccessURL string
@@ -132,4 +162,24 @@ type Payment struct {
 	Total int64
 	// BilledAt is when the provider collected it.
 	BilledAt time.Time
+}
+
+// ErrInvalidItem: a custom item the provider would refuse.
+var ErrInvalidItem = errors.New("provider: a custom item needs a name, a positive amount, a currency, a quantity and a known interval")
+
+// Validate checks a custom item before it is sent.
+func (c CustomItem) Validate() error {
+	switch {
+	case c.Name == "" || c.Amount <= 0 || len(c.Currency) != 3 || c.Quantity < 1:
+		return ErrInvalidItem
+	case c.Interval == "" && c.Frequency == 0:
+		return nil
+	case c.Frequency < 1:
+		return ErrInvalidItem
+	}
+	switch c.Interval {
+	case "day", "week", "month", "year":
+		return nil
+	}
+	return ErrInvalidItem
 }
