@@ -105,11 +105,33 @@ type Checkout struct {
 	URL string
 }
 
+// ChargeRequest bills a one-time price with a subscription's next renewal:
+// a catalog price (PriceID with Quantity) or, when Custom is set, a price
+// the host computes for this charge (a one-time CustomItem with its own
+// quantity), for example usage at the host's own rate.
 type ChargeRequest struct {
 	Subscription string
 	PriceID      string
 	Quantity     int
+	Custom       *CustomItem
 	Key          string
+}
+
+// Validate checks that the request names exactly one price, and a custom
+// one is one-time and valid.
+func (r ChargeRequest) Validate() error {
+	switch {
+	case r.Subscription == "":
+		return ErrInvalidItem
+	case r.Custom == nil:
+		if r.PriceID == "" || r.Quantity <= 0 {
+			return ErrInvalidItem
+		}
+		return nil
+	case r.PriceID != "" || r.Custom.Interval != "":
+		return ErrInvalidItem
+	}
+	return r.Custom.Validate()
 }
 
 // Product is a sellable thing with its prices; Reference is the host's key
