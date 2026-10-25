@@ -4,6 +4,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html);
 pre-1.0, the exported API may change between minor versions.
 
+## [0.9.0] - 2026-10-25
+
+### Added
+
+- `provider.ChargeRequest.Custom`: a one-time charge at a price the host
+  computes (usage at its own rate) instead of a catalog price;
+  `ChargeRequest.Validate` checks that a request names exactly one.
+
 ## [0.8.0] - 2026-10-23
 
 ### Added
