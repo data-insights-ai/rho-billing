@@ -4,6 +4,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html);
 pre-1.0, the exported API may change between minor versions.
 
+## [0.10.0] - 2026-10-26
+
+### Added
+
+- `provider.CheckoutRequest.Business` (`Business{Name, TaxID}`): the company
+  a checkout bills, so the invoice is a business invoice. Optional; a
+  request without it behaves as before. `Business.Validate` checks the
+  name and the tax number's shape. `LogValue`, `String` and `MarshalJSON`
+  keep the tax number out of logs and formatted output.
+
 ## [0.9.0] - 2026-10-25
 
 ### Added

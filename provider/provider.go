@@ -98,6 +98,9 @@ type CheckoutRequest struct {
 	// Reference comes back on the resulting subscription and payment.
 	Reference  string
 	SuccessURL string
+	// Business, when set, is the company the checkout bills; without it
+	// the provider bills the customer as it knows them.
+	Business *Business
 }
 
 type Checkout struct {
