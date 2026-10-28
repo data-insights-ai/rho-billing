@@ -34,6 +34,9 @@ type Lot struct {
 	RevokedAt time.Time
 
 	Initial, Available, Held, Consumed, Expired, Revoked int64
+	// PendingRevoke is held credit a refund took back: it is revoked, not
+	// made available, when its hold is released. At most Held.
+	PendingRevoke int64
 }
 
 // NewLot is a lot with all of its amount available.
@@ -49,6 +52,7 @@ func NewLot(id, scope string, amount int64, grantedAt, validFrom, expiresAt time
 
 func (l Lot) check() error {
 	if l.Available < 0 || l.Held < 0 || l.Consumed < 0 || l.Expired < 0 || l.Revoked < 0 ||
+		l.PendingRevoke < 0 || l.PendingRevoke > l.Held ||
 		l.Available+l.Held+l.Consumed+l.Expired+l.Revoked != l.Initial {
 		return ErrBroken
 	}

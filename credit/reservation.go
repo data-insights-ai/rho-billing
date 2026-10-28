@@ -82,10 +82,11 @@ func (b *Book) Settle(r Reservation, actual int64, at time.Time) (Settlement, er
 		l := b.lots[a.LotID]
 		consume := min(remaining, a.Amount)
 		remaining -= consume
+		b.free(l, a.Amount-consume, r.ID, at)
 		if consume > 0 {
 			b.move(l, Change{Kind: Consume, Reservation: r.ID, Held: -consume, Consumed: consume})
+			l.PendingRevoke = min(l.PendingRevoke, l.Held)
 		}
-		b.free(l, a.Amount-consume, r.ID, at)
 	}
 	uncovered, err := b.Spend(r.Scope, remaining, at, r.ID)
 	return Settlement{Consumed: actual - uncovered, Uncovered: uncovered}, err
@@ -108,6 +109,14 @@ func (b *Book) Cancel(r Reservation, at time.Time) error {
 func (b *Book) free(l *Lot, amount int64, reservation string, at time.Time) {
 	if amount <= 0 {
 		return
+	}
+	if revoke := min(amount, l.PendingRevoke); revoke > 0 {
+		l.PendingRevoke -= revoke
+		b.move(l, Change{Kind: Withdraw, Reservation: reservation, Held: -revoke, Revoked: revoke})
+		amount -= revoke
+		if amount == 0 {
+			return
+		}
 	}
 	c := Change{Reservation: reservation, Held: -amount}
 	switch {

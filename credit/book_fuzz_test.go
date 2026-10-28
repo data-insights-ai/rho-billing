@@ -1,6 +1,7 @@
 package credit_test
 
 import (
+	"strconv"
 	"testing"
 	"time"
 
@@ -25,12 +26,12 @@ func FuzzCreditIsConserved(f *testing.F) {
 		at := t0
 		for i := 0; i+1 < len(ops); i += 2 {
 			amount := int64(ops[i+1])
-			switch ops[i] % 6 {
+			switch ops[i] % 7 {
 			case 0:
 				at = at.Add(time.Duration(amount) * time.Hour)
 				b.Expire(at)
 			case 1:
-				if r, err := b.Reserve("r", "", amount, at); err == nil {
+				if r, err := b.Reserve("r"+strconv.Itoa(i), "", amount, at); err == nil {
 					open = append(open, r)
 				}
 			case 2:
@@ -47,11 +48,14 @@ func FuzzCreditIsConserved(f *testing.F) {
 				_, _ = b.Spend("", amount, at, "")
 			case 5:
 				_ = b.Revoke(lots[int(amount)%len(lots)].ID, at)
+			case 6:
+				_, _ = b.Withdraw(lots[int(amount)%len(lots)].ID, amount/2+1, at)
 			}
 		}
 		for _, l := range lots {
 			now, _ := b.Lot(l.ID)
 			if now.Available < 0 || now.Held < 0 || now.Consumed < 0 || now.Expired < 0 || now.Revoked < 0 ||
+				now.PendingRevoke < 0 || now.PendingRevoke > now.Held ||
 				now.Available+now.Held+now.Consumed+now.Expired+now.Revoked != now.Initial {
 				t.Fatalf("lot %s broken: %+v", l.ID, now)
 			}

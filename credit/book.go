@@ -133,10 +133,10 @@ func (b *Book) Revoke(id string, at time.Time) error {
 }
 
 // Withdraw takes back amount of a lot's credit (a refund of part or all of
-// it) from what is available, and answers the part it could not take:
-// credit already spent, or held by work still running. Taking back all
-// that is left revokes the lot as Revoke does, so its held credit is
-// revoked when its reservation ends.
+// it): what is available at once, what is held when its hold is released
+// (PendingRevoke). It answers the part it could not take back: credit
+// already spent. Held credit that is then spent stays consumed. Taking back
+// all that is left revokes the lot as Revoke does.
 func (b *Book) Withdraw(id string, amount int64, at time.Time) (short int64, err error) {
 	l, ok := b.lots[id]
 	switch {
@@ -147,14 +147,17 @@ func (b *Book) Withdraw(id string, amount int64, at time.Time) (short int64, err
 	case !l.RevokedAt.IsZero():
 		return amount, nil
 	}
-	take := min(amount, l.Available)
-	if amount >= l.Available+l.Held {
-		return amount - take, b.Revoke(id, at)
+	if left := l.Available + l.Held; amount >= left {
+		return amount - left, b.Revoke(id, at)
 	}
+	take := min(amount, l.Available)
 	if take > 0 {
 		b.move(l, Change{Kind: Withdraw, Available: -take, Revoked: take})
 	}
-	return amount - take, nil
+	pending := min(amount-take, l.Held-l.PendingRevoke)
+	l.PendingRevoke += pending
+	b.touched[id] = true
+	return amount - take - pending, nil
 }
 
 // Spend consumes up to amount from the spendable lots, soonest-expiring

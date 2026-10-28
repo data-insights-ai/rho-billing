@@ -255,3 +255,46 @@ func TestWithdrawTakesBackWhatIsLeft(t *testing.T) {
 		t.Fatalf("withdrew nothing: %v", err)
 	}
 }
+
+// Credit refunded while a reservation held it is revoked when the hold is
+// released, not returned to the customer.
+func TestARefundOfHeldCreditIsRevokedOnRelease(t *testing.T) {
+	b := open(t, lot(t, "a", "", 10, 0))
+	r, err := b.Reserve("r1", "", 6, t0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	short, err := b.Withdraw("a", 8, t0)
+	if err != nil || short != 0 {
+		t.Fatalf("short %d, %v; the held credit is still there to take back", short, err)
+	}
+	if err := b.Cancel(r, t0); err != nil {
+		t.Fatal(err)
+	}
+	if got := b.Available("", t0); got != 2 {
+		t.Fatalf("%d spendable after the release; want the 2 not refunded", got)
+	}
+	if l := get(t, b, "a"); l.Revoked != 8 {
+		t.Fatalf("lot %+v; want the 8 refunded revoked", l)
+	}
+}
+
+// A hold that is settled instead consumes the credit; it is not revoked
+// twice and the lot stays consistent.
+func TestARefundOfHeldCreditThatIsSettledStaysConsumed(t *testing.T) {
+	b := open(t, lot(t, "a", "", 10, 0))
+	r, err := b.Reserve("r1", "", 6, t0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.Withdraw("a", 8, t0); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.Settle(r, 6, t0); err != nil {
+		t.Fatal(err)
+	}
+	l := get(t, b, "a")
+	if l.Consumed != 6 || l.Revoked != 4 || l.Held != 0 || l.PendingRevoke != 0 {
+		t.Fatalf("lot %+v", l)
+	}
+}

@@ -15,8 +15,10 @@ pre-1.0, the exported API may change between minor versions.
   line to what it bought.
 - `Provider.FindCharge` and `ChargeStatus`: what the provider holds for a
   charge's key, to reconcile a charge whose outcome was not seen.
-- `credit.Book.Withdraw`: takes back part or all of a lot (a refund) and
-  answers what was already spent or held.
+- `credit.Book.Withdraw`: takes back part or all of a lot (a refund): the
+  available credit at once, held credit as `Lot.PendingRevoke`, revoked
+  when its hold is released; answers what was already spent. Hosts that
+  store lots must store `PendingRevoke`.
 - `credit.ErrEnded`.
 - `CustomerRequest.Locale`: the customer's language for the provider.
 
