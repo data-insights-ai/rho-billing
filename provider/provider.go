@@ -79,6 +79,9 @@ type ReplaceRequest struct {
 type CustomerRequest struct {
 	Email string
 	Name  string
+	// Locale is the customer's language as a BCP 47 tag (for example de),
+	// for the provider's mail and checkout; empty leaves the provider's.
+	Locale string
 	// Reference is the host's key for the account, kept as custom data.
 	Reference string
 }

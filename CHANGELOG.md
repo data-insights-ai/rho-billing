@@ -18,6 +18,7 @@ pre-1.0, the exported API may change between minor versions.
 - `credit.Book.Withdraw`: takes back part or all of a lot (a refund) and
   answers what was already spent or held.
 - `credit.ErrEnded`.
+- `CustomerRequest.Locale`: the customer's language for the provider.
 
 ### Changed
 
