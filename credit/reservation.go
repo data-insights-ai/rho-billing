@@ -25,6 +25,9 @@ type Settlement struct {
 	// Uncovered is usage beyond all spendable credit: billed overage, or a
 	// refusal, as the host decides.
 	Uncovered int64
+	// Refunded is credit a refund took back while this reservation held
+	// it, spent by this settlement after all: a shortfall of the refund.
+	Refunded int64
 }
 
 // Reserve holds amount on the spendable lots, soonest-expiring first, or
@@ -77,7 +80,7 @@ func (b *Book) Settle(r Reservation, actual int64, at time.Time) (Settlement, er
 	if err := b.end(r); err != nil {
 		return Settlement{}, err
 	}
-	remaining := actual
+	remaining, refunded := actual, int64(0)
 	for _, a := range r.Allocations {
 		l := b.lots[a.LotID]
 		consume := min(remaining, a.Amount)
@@ -85,11 +88,14 @@ func (b *Book) Settle(r Reservation, actual int64, at time.Time) (Settlement, er
 		b.free(l, a.Amount-consume, r.ID, at)
 		if consume > 0 {
 			b.move(l, Change{Kind: Consume, Reservation: r.ID, Held: -consume, Consumed: consume})
-			l.PendingRevoke = min(l.PendingRevoke, l.Held)
+			if spent := l.PendingRevoke - l.Held; spent > 0 {
+				refunded += spent
+				l.PendingRevoke = l.Held
+			}
 		}
 	}
 	uncovered, err := b.Spend(r.Scope, remaining, at, r.ID)
-	return Settlement{Consumed: actual - uncovered, Uncovered: uncovered}, err
+	return Settlement{Consumed: actual - uncovered, Uncovered: uncovered, Refunded: refunded}, err
 }
 
 // Cancel releases a whole reservation, for work that did not run or a

@@ -290,11 +290,47 @@ func TestARefundOfHeldCreditThatIsSettledStaysConsumed(t *testing.T) {
 	if _, err := b.Withdraw("a", 8, t0); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := b.Settle(r, 6, t0); err != nil {
-		t.Fatal(err)
+	st, err := b.Settle(r, 6, t0)
+	if err != nil || st.Refunded != 4 {
+		t.Fatalf("settlement %+v, %v; want the 4 refunded credits spent reported", st, err)
 	}
 	l := get(t, b, "a")
 	if l.Consumed != 6 || l.Revoked != 4 || l.Held != 0 || l.PendingRevoke != 0 {
+		t.Fatalf("lot %+v", l)
+	}
+}
+
+// A second refund while the first waits on a hold reports its shortfall
+// against what is left after the first.
+func TestASecondRefundCountsWhatTheFirstTook(t *testing.T) {
+	b := open(t, lot(t, "a", "", 10, 0))
+	if _, err := b.Reserve("r1", "", 6, t0); err != nil {
+		t.Fatal(err)
+	}
+	if short, err := b.Withdraw("a", 8, t0); err != nil || short != 0 {
+		t.Fatalf("first refund short %d, %v", short, err)
+	}
+	if short, err := b.Withdraw("a", 6, t0); err != nil || short != 4 {
+		t.Fatalf("second refund short %d, %v; only 2 were left", short, err)
+	}
+}
+
+// Credit of a revoked lot that a running reservation then spends is
+// reported as refunded credit spent.
+func TestSpendingHeldCreditOfARevokedLotIsReported(t *testing.T) {
+	b := open(t, lot(t, "a", "", 10, 0))
+	r, err := b.Reserve("r1", "", 6, t0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if short, err := b.Withdraw("a", 10, t0); err != nil || short != 0 {
+		t.Fatalf("short %d, %v", short, err)
+	}
+	st, err := b.Settle(r, 5, t0)
+	if err != nil || st.Refunded != 5 {
+		t.Fatalf("settlement %+v, %v; want 5 refunded credits spent", st, err)
+	}
+	if l := get(t, b, "a"); l.Revoked != 5 || l.Consumed != 5 || l.PendingRevoke != 0 {
 		t.Fatalf("lot %+v", l)
 	}
 }

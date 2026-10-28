@@ -17,8 +17,10 @@ pre-1.0, the exported API may change between minor versions.
   charge's key, to reconcile a charge whose outcome was not seen.
 - `credit.Book.Withdraw`: takes back part or all of a lot (a refund): the
   available credit at once, held credit as `Lot.PendingRevoke`, revoked
-  when its hold is released; answers what was already spent. Hosts that
-  store lots must store `PendingRevoke`.
+  when its hold is released; answers what was already spent. Held credit
+  spent after all is reported by `Settle` as `Settlement.Refunded`. Hosts
+  that store lots must store `PendingRevoke`. `Revoke` marks the lot's
+  held credit pending the same way.
 - `credit.ErrEnded`.
 - `CustomerRequest.Locale`: the customer's language for the provider.
 

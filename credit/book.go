@@ -114,7 +114,8 @@ func (b *Book) Expire(at time.Time) {
 }
 
 // Revoke takes back what is left of a lot (a refund, a chargeback): its
-// available credit at once, its held credit when the reservation ends.
+// available credit at once, its held credit when the reservation ends
+// (PendingRevoke; Settle reports what is spent instead).
 // Consumed credit stays consumed.
 func (b *Book) Revoke(id string, at time.Time) error {
 	l, ok := b.lots[id]
@@ -125,6 +126,7 @@ func (b *Book) Revoke(id string, at time.Time) error {
 		return nil
 	}
 	l.RevokedAt = at
+	l.PendingRevoke = l.Held
 	b.touched[id] = true
 	if l.Available > 0 {
 		b.move(l, Change{Kind: Withdraw, Available: -l.Available, Revoked: l.Available})
@@ -135,7 +137,8 @@ func (b *Book) Revoke(id string, at time.Time) error {
 // Withdraw takes back amount of a lot's credit (a refund of part or all of
 // it): what is available at once, what is held when its hold is released
 // (PendingRevoke). It answers the part it could not take back: credit
-// already spent. Held credit that is then spent stays consumed. Taking back
+// already spent. Held credit that is spent after all is reported by
+// Settle (Settlement.Refunded), a shortfall found later. Taking back
 // all that is left revokes the lot as Revoke does.
 func (b *Book) Withdraw(id string, amount int64, at time.Time) (short int64, err error) {
 	l, ok := b.lots[id]
@@ -147,7 +150,7 @@ func (b *Book) Withdraw(id string, amount int64, at time.Time) (short int64, err
 	case !l.RevokedAt.IsZero():
 		return amount, nil
 	}
-	if left := l.Available + l.Held; amount >= left {
+	if left := l.Available + l.Held - l.PendingRevoke; amount >= left {
 		return amount - left, b.Revoke(id, at)
 	}
 	take := min(amount, l.Available)
