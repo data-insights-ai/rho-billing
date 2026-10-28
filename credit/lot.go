@@ -16,7 +16,9 @@ var (
 	ErrInvalid      = errors.New("credit: invalid input")
 	ErrInsufficient = errors.New("credit: not enough credit")
 	ErrUnknownLot   = errors.New("credit: unknown lot")
-	ErrBroken       = errors.New("credit: a lot's counters do not add up")
+	// ErrEnded: the reservation was settled or cancelled already.
+	ErrEnded  = errors.New("credit: reservation already ended")
+	ErrBroken = errors.New("credit: a lot's counters do not add up")
 )
 
 // Lot is one grant of credit: a purchase, a plan allowance, a promotion.

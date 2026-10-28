@@ -12,11 +12,12 @@ type Book struct {
 	lots    map[string]*Lot
 	changes []Change
 	touched map[string]bool
+	ended   map[string]bool
 }
 
 // Open checks the lots and starts a working set on copies of them.
 func Open(lots []Lot) (*Book, error) {
-	b := &Book{lots: make(map[string]*Lot, len(lots)), touched: map[string]bool{}}
+	b := &Book{lots: make(map[string]*Lot, len(lots)), touched: map[string]bool{}, ended: map[string]bool{}}
 	for _, l := range lots {
 		if err := l.check(); err != nil {
 			return nil, err
@@ -129,6 +130,31 @@ func (b *Book) Revoke(id string, at time.Time) error {
 		b.move(l, Change{Kind: Withdraw, Available: -l.Available, Revoked: l.Available})
 	}
 	return nil
+}
+
+// Withdraw takes back amount of a lot's credit (a refund of part or all of
+// it) from what is available, and answers the part it could not take:
+// credit already spent, or held by work still running. Taking back all
+// that is left revokes the lot as Revoke does, so its held credit is
+// revoked when its reservation ends.
+func (b *Book) Withdraw(id string, amount int64, at time.Time) (short int64, err error) {
+	l, ok := b.lots[id]
+	switch {
+	case !ok:
+		return 0, ErrUnknownLot
+	case amount <= 0:
+		return 0, ErrInvalid
+	case !l.RevokedAt.IsZero():
+		return amount, nil
+	}
+	take := min(amount, l.Available)
+	if amount >= l.Available+l.Held {
+		return amount - take, b.Revoke(id, at)
+	}
+	if take > 0 {
+		b.move(l, Change{Kind: Withdraw, Available: -take, Revoked: take})
+	}
+	return amount - take, nil
 }
 
 // Spend consumes up to amount from the spendable lots, soonest-expiring

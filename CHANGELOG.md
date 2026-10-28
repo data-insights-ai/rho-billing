@@ -4,6 +4,34 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html);
 pre-1.0, the exported API may change between minor versions.
 
+## [0.11.0] - 2026-10-28
+
+### Added
+
+- Event kinds `PaymentFailed`, `PaymentCanceled` (with `Payment.Failure`)
+  and `PaymentAdjusted` with `Adjustment`: refunds, credits, chargebacks
+  and their reversals; `ReturnsMoney` and `Reverses` classify them.
+- `Transaction.Lines`: the billed prices, so a host can map an adjusted
+  line to what it bought.
+- `Provider.FindCharge` and `ChargeStatus`: what the provider holds for a
+  charge's key, to reconcile a charge whose outcome was not seen.
+- `credit.Book.Withdraw`: takes back part or all of a lot (a refund) and
+  answers what was already spent or held.
+- `credit.ErrEnded`.
+
+### Changed
+
+- `Provider` gained `FindCharge`: implementations must add it.
+- `Charge` is documented as not idempotent; `ChargeRequest.Key` names the
+  charge for `FindCharge`.
+
+### Fixed
+
+- `Book.Settle` and `Book.Cancel` check, before anything moves, that the
+  lots hold all of the reservation's allocations, and refuse a reservation
+  already ended in the same Book (`ErrEnded`), instead of checking each
+  lot's total hold while moving credit.
+
 ## [0.10.0] - 2026-10-26
 
 ### Added

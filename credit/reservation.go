@@ -74,12 +74,12 @@ func (b *Book) Settle(r Reservation, actual int64, at time.Time) (Settlement, er
 	if actual < 0 {
 		return Settlement{}, ErrInvalid
 	}
+	if err := b.end(r); err != nil {
+		return Settlement{}, err
+	}
 	remaining := actual
 	for _, a := range r.Allocations {
-		l, ok := b.lots[a.LotID]
-		if !ok || l.Held < a.Amount {
-			return Settlement{}, ErrUnknownLot
-		}
+		l := b.lots[a.LotID]
 		consume := min(remaining, a.Amount)
 		remaining -= consume
 		if consume > 0 {
@@ -94,12 +94,11 @@ func (b *Book) Settle(r Reservation, actual int64, at time.Time) (Settlement, er
 // Cancel releases a whole reservation, for work that did not run or a
 // reservation past its deadline.
 func (b *Book) Cancel(r Reservation, at time.Time) error {
+	if err := b.end(r); err != nil {
+		return err
+	}
 	for _, a := range r.Allocations {
-		l, ok := b.lots[a.LotID]
-		if !ok || l.Held < a.Amount {
-			return ErrUnknownLot
-		}
-		b.free(l, a.Amount, r.ID, at)
+		b.free(b.lots[a.LotID], a.Amount, r.ID, at)
 	}
 	return nil
 }
@@ -120,4 +119,31 @@ func (b *Book) free(l *Lot, amount int64, reservation string, at time.Time) {
 		c.Kind, c.Available = Release, amount
 	}
 	b.move(l, c)
+}
+
+// end checks, before anything moves, that the lots hold all of r's
+// allocations and that r has not ended in this Book, and marks it ended.
+// The Book cannot tell reservations on one lot apart across Books: a host
+// settles or cancels only a reservation it stores as held.
+func (b *Book) end(r Reservation) error {
+	if r.ID == "" {
+		return ErrInvalid
+	}
+	if b.ended[r.ID] {
+		return ErrEnded
+	}
+	need := map[string]int64{}
+	for _, a := range r.Allocations {
+		if a.Amount < 0 {
+			return ErrInvalid
+		}
+		need[a.LotID] += a.Amount
+	}
+	for id, amount := range need {
+		if l, ok := b.lots[id]; !ok || l.Held < amount {
+			return ErrUnknownLot
+		}
+	}
+	b.ended[r.ID] = true
+	return nil
 }

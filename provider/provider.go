@@ -27,8 +27,13 @@ type Provider interface {
 	CustomerPortal(ctx context.Context, customer string) (string, error)
 	Catalog(ctx context.Context) ([]Product, error)
 	// Charge bills a one-time amount on a subscription's next invoice,
-	// for example usage beyond prepaid credit; the key makes it idempotent.
+	// for example usage beyond prepaid credit. It is not idempotent: a host
+	// records a charge before asking for it, and settles an outcome it
+	// could not see with FindCharge, never by asking again blindly.
 	Charge(ctx context.Context, r ChargeRequest) error
+	// FindCharge looks up what the provider holds for a charge's key on
+	// the subscription.
+	FindCharge(ctx context.Context, subscription, key string) (ChargeStatus, error)
 	// CreateCustomer creates the provider's customer for a host account,
 	// so checkouts and payments are bound to it from the start.
 	CreateCustomer(ctx context.Context, r CustomerRequest) (string, error)
@@ -86,6 +91,17 @@ type Transaction struct {
 	// Subscription is set for a subscription's transactions.
 	Subscription string
 	Reference    string
+	// Lines are what the transaction bills, one per price.
+	Lines []Line
+}
+
+// Line is one billed price of a transaction.
+type Line struct {
+	ID       string
+	PriceID  string
+	Quantity int
+	// Total is in the currency's minor unit, tax included.
+	Total int64
 }
 
 type CheckoutRequest struct {
@@ -117,7 +133,18 @@ type ChargeRequest struct {
 	PriceID      string
 	Quantity     int
 	Custom       *CustomItem
-	Key          string
+	// Key names the charge at the provider, so FindCharge can find it;
+	// the provider keeps it only where it can (see the plugin).
+	Key string
+}
+
+// ChargeStatus is what the provider holds for a charge's key.
+type ChargeStatus struct {
+	// Found says the provider has the charge: scheduled for the next
+	// renewal, or billed.
+	Found bool
+	// Payment is the payment (transaction) that billed it, once billed.
+	Payment string
 }
 
 // Validate checks that the request names exactly one price, and a custom
@@ -169,6 +196,13 @@ const (
 	// PaymentCompleted: money was collected, for a subscription or a
 	// one-time purchase.
 	PaymentCompleted Kind = "payment.completed"
+	// PaymentFailed: collecting a payment failed; the provider may retry.
+	PaymentFailed Kind = "payment.failed"
+	// PaymentCanceled: a payment will not be collected.
+	PaymentCanceled Kind = "payment.canceled"
+	// PaymentAdjusted: a completed payment was refunded, credited or
+	// charged back, or such an adjustment changed.
+	PaymentAdjusted Kind = "payment.adjusted"
 )
 
 // Event is a verified, decoded provider webhook.
@@ -178,8 +212,11 @@ type Event struct {
 	OccurredAt time.Time
 	// Subscription is set for SubscriptionChanged.
 	Subscription *subscription.Subscription
-	// Payment is set for PaymentCompleted.
+	// Payment is set for PaymentCompleted, PaymentFailed and
+	// PaymentCanceled.
 	Payment *Payment
+	// Adjustment is set for PaymentAdjusted.
+	Adjustment *Adjustment
 }
 
 type Payment struct {
@@ -193,6 +230,9 @@ type Payment struct {
 	Total int64
 	// BilledAt is when the provider collected it.
 	BilledAt time.Time
+	// Failure is the provider's reason a collection failed
+	// (PaymentFailed), for example declined.
+	Failure string
 }
 
 // ErrInvalidItem: a custom item the provider would refuse.

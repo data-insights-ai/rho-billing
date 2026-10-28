@@ -186,3 +186,72 @@ func TestChangesReplayToTheChangedLots(t *testing.T) {
 		}
 	}
 }
+
+// A reservation settles only from its own hold: settling it twice does not
+// spend another reservation's hold on the same lot.
+func TestSettleTwiceDoesNotSpendAnotherReservationsHold(t *testing.T) {
+	b := open(t, lot(t, "a", "", 10, 0))
+	first, err := b.Reserve("r1", "", 5, t0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.Reserve("r2", "", 5, t0); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.Settle(first, 5, t0); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.Settle(first, 5, t0); !errors.Is(err, credit.ErrEnded) {
+		t.Fatalf("a settled reservation settled again: %v", err)
+	}
+	if l := get(t, b, "a"); l.Held != 5 || l.Consumed != 5 {
+		t.Fatalf("lot %+v; want r2's hold of 5 intact", l)
+	}
+}
+
+// A reservation whose allocations the lots do not hold changes nothing.
+func TestSettleOfAnUnheldReservationChangesNothing(t *testing.T) {
+	b := open(t, lot(t, "a", "", 10, 0), lot(t, "b", "", 10, 0))
+	r, err := b.Reserve("r1", "", 5, t0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Allocations = append(r.Allocations, credit.Allocation{LotID: "b", Amount: 5})
+	before := len(b.Changes())
+	if _, err := b.Settle(r, 10, t0); !errors.Is(err, credit.ErrUnknownLot) {
+		t.Fatalf("settled a hold the lots do not have: %v", err)
+	}
+	if len(b.Changes()) != before {
+		t.Fatalf("a refused settle moved credit: %+v", b.Changes()[before:])
+	}
+}
+
+// A refund takes back what is left of the refunded credit and answers the
+// part already spent or held.
+func TestWithdrawTakesBackWhatIsLeft(t *testing.T) {
+	b := open(t, lot(t, "a", "", 10, 0), lot(t, "b", "", 10, 0))
+	if _, err := b.Spend("", 6, t0, ""); err != nil {
+		t.Fatal(err)
+	}
+	spent := "a"
+	if get(t, b, "a").Consumed == 0 {
+		spent = "b"
+	}
+	short, err := b.Withdraw(spent, 10, t0)
+	if err != nil || short != 6 {
+		t.Fatalf("short %d, %v; want the 6 spent", short, err)
+	}
+	if l := get(t, b, spent); l.Available != 0 || l.Revoked != 4 || l.RevokedAt.IsZero() {
+		t.Fatalf("lot %+v; want the 4 left revoked", l)
+	}
+	other := map[string]string{"a": "b", "b": "a"}[spent]
+	if short, err := b.Withdraw(other, 3, t0); err != nil || short != 0 {
+		t.Fatalf("partial refund short %d, %v", short, err)
+	}
+	if l := get(t, b, other); l.Available != 7 || l.Revoked != 3 || !l.RevokedAt.IsZero() {
+		t.Fatalf("lot %+v; a partial refund takes 3 and leaves the rest usable", l)
+	}
+	if _, err := b.Withdraw(other, 0, t0); !errors.Is(err, credit.ErrInvalid) {
+		t.Fatalf("withdrew nothing: %v", err)
+	}
+}
