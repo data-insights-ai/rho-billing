@@ -50,11 +50,29 @@ type Adjustment struct {
 type AdjustedLine struct {
 	// Line is the payment's line (Transaction.Lines[].ID).
 	Line string
-	// Full says the whole line is adjusted.
-	Full bool
+	// Type is which part of the line the adjustment covers.
+	Type AdjustedType
 	// Total is in the currency's minor unit.
 	Total int64
 }
+
+// AdjustedType is which part of a line an adjustment covers.
+type AdjustedType string
+
+const (
+	// AdjustedFull: the whole line.
+	AdjustedFull AdjustedType = "full"
+	// AdjustedPartial: a part of the line's amount.
+	AdjustedPartial AdjustedType = "partial"
+	// AdjustedTax: only tax on the line.
+	AdjustedTax AdjustedType = "tax"
+	// AdjustedProration: a prorated part of the line, for a change of a
+	// subscription within its period.
+	AdjustedProration AdjustedType = "proration"
+)
+
+// Full says the adjustment covers the whole line.
+func (l AdjustedLine) Full() bool { return l.Type == AdjustedFull }
 
 // ReturnsMoney says the adjustment, approved, moved money back to the
 // customer: what the money bought should be taken back.

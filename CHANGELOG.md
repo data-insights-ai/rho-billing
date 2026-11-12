@@ -6,6 +6,14 @@ pre-1.0, the exported API may change between minor versions.
 
 ## [Unreleased]
 
+### Changed
+
+- `AdjustedLine.Type` (full, partial, tax, proration) replaces `Full`,
+  which is now a method, so a host leaves tax-only adjustments alone and
+  handles a proration's as a proration.
+- `subscription.Item.Recurring`: false for a one-time charge listed with
+  the subscription, so a host tells plan prices from one-time ones.
+
 ## [0.13.0] - 2026-11-12
 
 ### Added

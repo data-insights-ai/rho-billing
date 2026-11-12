@@ -24,10 +24,12 @@ const (
 	Canceled Status = "canceled"
 )
 
-// Item is one price on the subscription.
+// Item is one price on the subscription. Recurring is false for a one-time
+// charge the provider lists with the subscription until it is billed.
 type Item struct {
-	PriceID  string
-	Quantity int
+	PriceID   string
+	Quantity  int
+	Recurring bool
 }
 
 // Revision orders snapshots: the time the provider says the change happened,

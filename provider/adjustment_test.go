@@ -30,3 +30,11 @@ func TestOnlyApprovedRefundsCreditsAndChargebacksReturnMoney(t *testing.T) {
 		t.Error("an approved chargeback reversal does not reverse")
 	}
 }
+
+func TestAnAdjustedLineIsFullByItsType(t *testing.T) {
+	for typ, want := range map[AdjustedType]bool{AdjustedFull: true, AdjustedPartial: false, AdjustedTax: false, AdjustedProration: false} {
+		if got := (AdjustedLine{Type: typ, Total: 100}).Full(); got != want {
+			t.Errorf("%s: full %v", typ, got)
+		}
+	}
+}
