@@ -6,6 +6,13 @@ pre-1.0, the exported API may change between minor versions.
 
 ## [Unreleased]
 
+### Added
+
+- `Transaction.Origin` (how the provider created it, `Origin` constants),
+  `Line.Proration` (rate and billing period of a prorated line) and
+  `Transaction.Prorated()`, so a host can tell the charge of a subscription
+  change within its period from the period's payment.
+
 ## [0.12.0] - 2026-11-12
 
 ### Added

@@ -91,6 +91,8 @@ type Transaction struct {
 	ID       string
 	Status   string
 	Customer string
+	// Origin is how the provider created the transaction.
+	Origin Origin
 	// Subscription is set for a subscription's transactions.
 	Subscription string
 	Reference    string
@@ -108,6 +110,52 @@ type Line struct {
 	Quantity int
 	// Total is in the currency's minor unit, tax included.
 	Total int64
+	// Proration is set when the line charges a change of a subscription
+	// within its period, for the part of the period left.
+	Proration *Proration
+}
+
+// Origin is how the provider created a transaction.
+type Origin string
+
+const (
+	// OriginAPI: created by the host through the provider's API.
+	OriginAPI Origin = "api"
+	// OriginCheckout: created by a checkout.
+	OriginCheckout Origin = "web"
+	// OriginSubscriptionCharge: a one-time charge on a subscription.
+	OriginSubscriptionCharge Origin = "subscription_charge"
+	// OriginSubscriptionRecurring: a subscription's renewal.
+	OriginSubscriptionRecurring Origin = "subscription_recurring"
+	// OriginSubscriptionUpdate: a change of a subscription within its
+	// period, prorated.
+	OriginSubscriptionUpdate Origin = "subscription_update"
+	// OriginPaymentMethodChange: a change of payment method, often of zero
+	// value.
+	OriginPaymentMethodChange Origin = "subscription_payment_method_change"
+)
+
+// Proration is how a line's price was prorated: the share of the billing
+// period charged, as the provider states it (a decimal such as "0.5"), and
+// the period it is based on.
+type Proration struct {
+	Rate                   string
+	PeriodStart, PeriodEnd time.Time
+}
+
+// Prorated says the transaction charges a change of a subscription within
+// its period, not the period itself: its origin is a subscription update,
+// or one of its lines is prorated.
+func (t Transaction) Prorated() bool {
+	if t.Origin == OriginSubscriptionUpdate {
+		return true
+	}
+	for _, l := range t.Lines {
+		if l.Proration != nil {
+			return true
+		}
+	}
+	return false
 }
 
 type CheckoutRequest struct {
