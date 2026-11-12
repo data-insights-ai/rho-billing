@@ -94,6 +94,9 @@ type Transaction struct {
 	// Subscription is set for a subscription's transactions.
 	Subscription string
 	Reference    string
+	// PeriodStart and PeriodEnd are the billing period a subscription's
+	// transaction pays for; zero for a one-time transaction.
+	PeriodStart, PeriodEnd time.Time
 	// Lines are what the transaction bills, one per price.
 	Lines []Line
 }

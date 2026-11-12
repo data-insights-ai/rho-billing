@@ -4,6 +4,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html);
 pre-1.0, the exported API may change between minor versions.
 
+## [Unreleased]
+
+### Added
+
+- `Transaction.PeriodStart` and `PeriodEnd`: the billing period a
+  subscription's transaction pays for, so a host can attribute a refund
+  or chargeback to the period it was paid for.
+
 ## [0.11.0] - 2026-10-28
 
 ### Added
