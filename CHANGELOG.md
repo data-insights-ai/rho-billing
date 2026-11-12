@@ -6,6 +6,13 @@ pre-1.0, the exported API may change between minor versions.
 
 ## [Unreleased]
 
+## [0.14.1] - 2026-11-12
+
+### Fixed
+
+- The provider test suite builds again (v0.14.0 shipped a test that did
+  not).
+
 ## [0.14.0] - 2026-11-12
 
 ### Changed
