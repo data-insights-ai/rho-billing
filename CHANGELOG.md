@@ -6,6 +6,8 @@ pre-1.0, the exported API may change between minor versions.
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-11-12
+
 ### Added
 
 - `Transaction.Origin` (how the provider created it, `Origin` constants),
