@@ -6,6 +6,16 @@ pre-1.0, the exported API may change between minor versions.
 
 ## [Unreleased]
 
+## [0.14.2] - 2026-11-12
+
+### Fixed
+
+- `subscription.Item.Recurring` no longer claims the provider lists
+  one-time charges with a subscription until billed; Paddle never does.
+  `Transaction.Prorated()` says that a renewal can carry prorated lines,
+  so a line is judged by its `Proration` and a transaction by its
+  `Origin`.
+
 ## [0.14.1] - 2026-11-12
 
 ### Fixed

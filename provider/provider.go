@@ -143,9 +143,11 @@ type Proration struct {
 	PeriodStart, PeriodEnd time.Time
 }
 
-// Prorated says the transaction charges a change of a subscription within
-// its period, not the period itself: its origin is a subscription update,
-// or one of its lines is prorated.
+// Prorated says the transaction was created by a change of a subscription
+// within its period, or carries a prorated line. A renewal can carry
+// prorated lines of such a change beside the period's own lines, so a host
+// that tells a line's charge apart judges the line by its Proration and
+// the transaction by its Origin, not by this.
 func (t Transaction) Prorated() bool {
 	if t.Origin == OriginSubscriptionUpdate {
 		return true

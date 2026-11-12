@@ -25,7 +25,10 @@ const (
 )
 
 // Item is one price on the subscription. Recurring is false for a one-time
-// charge the provider lists with the subscription until it is billed.
+// item, should the provider ever list one with a subscription; Paddle does
+// not (a one-time charge goes on the next transaction, never into the
+// subscription's items), so a host still keeps only recurring items as the
+// subscription's plan prices.
 type Item struct {
 	PriceID   string
 	Quantity  int
